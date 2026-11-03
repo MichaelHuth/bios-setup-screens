@@ -5,6 +5,10 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import os
+import subprocess
+import sys
+from pathlib import Path
 from types import SimpleNamespace as NS
 
 import discord
@@ -18,6 +22,37 @@ OTHER = NS(id=2, bot=False)
 
 def test_import_needs_no_secrets() -> None:
     assert b.optional_secret("no-such-secret.txt") is None
+
+
+def test_settings_from_env_file_reach_the_modules(tmp_path: Path) -> None:
+    """The .env file is loaded before the bot's own modules read their settings on import. A
+    fresh interpreter stands in a load_dotenv that sets the values, so the real .env is not
+    touched."""
+    probe = (
+        "import os, sys, dotenv\n"
+        "sys.path.insert(0, sys.argv[1])\n"
+        "def fake(path=None):\n"
+        "    print('env file', path)\n"
+        "    os.environ.update(WORK_DIR=sys.argv[2], TOOL_CALL_SECONDS='7', FILE_MAX_DAYS='3')\n"
+        "dotenv.load_dotenv = fake\n"
+        "import bot\n"
+        "print(bot.workspace.WORK_DIR, bot.isolation.CALL_SECONDS, bot.workspace.FILE_MAX_DAYS)\n"
+    )
+    env = {
+        k: v
+        for k, v in os.environ.items()
+        if k not in ("WORK_DIR", "TOOL_CALL_SECONDS", "FILE_MAX_DAYS")
+    }
+    root = Path(b.__file__).parent
+    out = subprocess.run(
+        [sys.executable, "-I", "-c", probe, str(root), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        env=env,
+        timeout=120,
+        check=True,
+    ).stdout.splitlines()
+    assert out == [f"env file {root / '.env'}", f"{tmp_path} 7 3.0"]
 
 
 @pytest.fixture

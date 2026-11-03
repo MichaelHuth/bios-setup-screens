@@ -19,6 +19,11 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
+HERE = Path(__file__).parent
+# (before the bot's own modules: they read their settings from the environment when imported)
+load_dotenv(HERE / ".env")
+
+# pylint: disable=wrong-import-position
 import binary_tools
 from discord_format import chunks, convert_tables
 import isolation
@@ -26,8 +31,7 @@ import screen_tools
 import web_tools
 import workspace
 
-load_dotenv()
-HERE = Path(__file__).parent
+# pylint: enable=wrong-import-position
 
 
 def read_secret(name: str) -> str:
