@@ -1,0 +1,22 @@
+# secrets and local settings
+.env
+api-key.txt
+discord-token.txt
+ollama-api-key.txt
+
+# working folders (uploaded files, MCP files)
+work/
+mcp-work/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.mypy_cache/
+
+# logs and firmware images
+*.log
+*.rom
+*.bin
+!fonts/*.bin
+*.zip

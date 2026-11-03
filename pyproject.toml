@@ -1,0 +1,60 @@
+[tool.black]
+line-length = 100
+extend-exclude = "^/(devtools|work|fonts)/"
+
+[tool.mypy]
+python_version = "3.14"
+files = ["*.py"]
+exclude = ["^devtools/", "^work/"]
+check_untyped_defs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+ignore_missing_imports = true
+
+[tool.pylint.main]
+ignore = ["devtools", "work", "fonts", ".venv"]
+jobs = 0
+
+[tool.pylint.format]
+max-line-length = 100
+
+[tool.pylint.basic]
+# ("bar" is a PCI base address register here)
+bad-names = ["foo", "baz", "toto", "tutu", "tata"]
+
+[tool.pylint."messages control"]
+# Emulator and setup-screen code: long functions, many branches and register-named locals are
+# the nature of the work, not defects.
+disable = [
+    "too-many-lines",
+    "too-many-locals",
+    "too-many-branches",
+    "too-many-statements",
+    "too-many-instance-attributes",
+    "too-many-arguments",
+    "too-many-positional-arguments",
+    "too-many-return-statements",
+    "too-many-boolean-expressions",
+    "too-many-nested-blocks",
+    "too-few-public-methods",
+    "missing-module-docstring",
+    "missing-class-docstring",
+    "missing-function-docstring",
+    "invalid-name",
+    # Unicorn, discord.py and HTMLParser callbacks and the AI tool functions have fixed
+    # signatures whose arguments are not all used
+    "unused-argument",
+    # a damaged module, archive or emulator run is reported, never allowed to stop the bot
+    "broad-exception-caught",
+    # the setup modules share the underscore helpers of their family's base module
+    "protected-access",
+    # setup classes reuse a base class's screen walking but build their own emulator state
+    "super-init-not-called",
+    "duplicate-code",
+    # pylint's inference misreads variables first set to None; types are checked by mypy
+    "unsubscriptable-object",
+    "unsupported-assignment-operation",
+    "not-callable",
+]
