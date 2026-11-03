@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 
 import binary_tools
 from discord_format import chunks, convert_tables
+import isolation
 import screen_tools
 import web_tools
 import workspace
@@ -123,11 +124,16 @@ web_client = web_tools.WebTools(
 web: web_tools.WebTools | None = web_client if web_client.enabled else None
 # File tools for the channel's working folder are always on
 TOOLS = workspace.TOOLS + binary_tools.TOOLS + screen_tools.TOOLS + (web_tools.TOOLS if web else [])
+# (the tools that read uploaded files: run in a process of their own, isolation.py)
+ISOLATED = workspace.TOOL_NAMES | binary_tools.TOOL_NAMES | screen_tools.TOOL_NAMES
 
 
 async def run_tool(channel_id: int, name: str, args: dict) -> Any:
-    """Run one tool call; returns tool_result content (text or content blocks)."""
-    if name in workspace.TOOL_NAMES:
+    """Run one tool call; returns tool_result content (text or content blocks). The file,
+    binary and screen tools run in the question's tool process (isolation.py)."""
+    if name in ISOLATED and isolation.current.get() is not None:  # (None: outside a question)
+        result = await isolation.run(name, args)
+    elif name in workspace.TOOL_NAMES:
         result = await workspace.run(channel_id, name, args)
     elif name in binary_tools.TOOL_NAMES:
         result = await binary_tools.run(channel_id, name, args)
@@ -193,7 +199,11 @@ async def ask_ai(channel_id: int, author: str, prompt: str) -> str:
                         {
                             "type": "tool_result",
                             "tool_use_id": block.id,
-                            "content": f"{type(e).__name__}: {e}",
+                            "content": (
+                                str(e)
+                                if isinstance(e, isolation.ToolFailed)
+                                else f"{type(e).__name__}: {e}"
+                            ),
                             "is_error": True,
                         }
                     )
@@ -502,8 +512,27 @@ async def answer(
     """Save any attached files to the user's working folder, then ask the AI (with the
     earlier answer this question replies to, if any).
     Returns the reply and the images tools created for it."""
+    worker = isolation.Worker(channel_id, workspace.current_user.get())
+    worker_token = isolation.current.set(worker)
+    try:
+        return await _answer(channel_id, author, prompt, files, context, worker)
+    finally:
+        isolation.current.reset(worker_token)
+        await worker.close()
+
+
+async def _answer(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    channel_id: int,
+    author: str,
+    prompt: str,
+    files: list[discord.Attachment],
+    context: str,
+    worker: isolation.Worker,
+) -> tuple[str, list[Path]]:
     question = prompt
-    saved, notes = await workspace.save_attachments(channel_id, files) if files else ([], [])
+    saved, notes = (
+        await workspace.save_attachments(channel_id, files, worker.describe) if files else ([], [])
+    )
     note_lines = "".join(f"-# {n}\n" for n in notes)  # small grey text in Discord
     if saved:
         prompt = (

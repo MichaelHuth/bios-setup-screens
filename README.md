@@ -24,6 +24,10 @@ client.
   as context. Otherwise every question stands on its own.
 - Files are kept per user and per channel. Nobody can read, overwrite or delete another user's
   files. `/reset` deletes your own files; old files are pruned by age and size.
+- Uploaded files are parsed in a separate process per question, with a time limit and, on
+  Windows, memory and process limits, so a damaged or hostile file cannot take the bot down.
+  On Windows that process runs at low integrity: it can write only to the work folder, which
+  the bot labels for it on first use (granting its own user full control there if needed).
 - `/ping` shows the latency.
 - Web search and page fetching through a [SearXNG](https://docs.searxng.org/) instance, with
   Ollama's web API as an optional fallback. Only public addresses are fetched, and the

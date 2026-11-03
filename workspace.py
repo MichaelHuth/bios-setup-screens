@@ -18,7 +18,7 @@ import re
 import shutil
 import time
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Awaitable, Callable, Dict
 
 import discord
 import pypdfium2 as pdfium
@@ -327,9 +327,13 @@ async def run(channel_id: int, name: str, args: Dict[str, Any]) -> Any:
 
 
 async def save_attachments(
-    channel_id: int, attachments: list[discord.Attachment]
+    channel_id: int,
+    attachments: list[discord.Attachment],
+    describe: Callable[[Path], Awaitable[str]] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """Save attachments to the channel's folder. Returns (file descriptions, notes for the user)."""
+    """Save attachments to the channel's folder. Returns (file descriptions, notes for the user).
+    describe gives a saved file's description (the bot's: in the tool process, as it opens
+    PDFs)."""
     folder = channel_dir(channel_id)
     folder.mkdir(parents=True, exist_ok=True)
     saved, notes = [], []
@@ -354,5 +358,5 @@ async def save_attachments(
         if error:
             notes.append(f"`{att.filename}` skipped: download failed ({type(error).__name__})")
             continue
-        saved.append(await asyncio.to_thread(_describe, path))
+        saved.append(await describe(path) if describe else await asyncio.to_thread(_describe, path))
     return saved, notes
