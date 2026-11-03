@@ -59,6 +59,8 @@ class _Bits:
     def bit(self) -> int:
         self.mask >>= 1
         if not self.mask:
+            if self.at >= len(self.data):
+                raise ValueError("type 4 data ended early")
             self.byte, self.mask = self.data[self.at], 0x80
             self.at += 1
         return 1 if self.byte & self.mask else 0
