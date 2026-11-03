@@ -40,11 +40,16 @@ def read_secret(name: str) -> str:
     return value
 
 
-TOKEN = read_secret("discord-token.txt")
+def optional_secret(name: str) -> str | None:
+    """A secret file's value, or None when there is none (importing the bot, as the tests do,
+    needs no secrets; starting it does)."""
+    return read_secret(name) if (HERE / name).is_file() else None
+
+
 BOT_NICKNAME = os.getenv("BOT_NICKNAME", "Gwennyfer")  # set in every server; empty = leave as is
 
 AI_BASE_URL = os.getenv("AI_BASE_URL", "http://localhost:8080")
-AI_API_KEY = read_secret("api-key.txt")
+AI_API_KEY = optional_secret("api-key.txt")  # (required when the bot starts)
 # (a local server may ignore the model name and use its own model)
 AI_MODEL = os.getenv("AI_MODEL", "claude-sonnet-5-5")
 AI_MAX_TOKENS = int(os.getenv("AI_MAX_TOKENS", "32000"))  # room for thinking + answer
@@ -662,9 +667,10 @@ class ShortNetworkErrors(logging.Filter):
 
 
 if __name__ == "__main__":
+    read_secret("api-key.txt")  # (stops here with a message when it is missing)
     discord.utils.setup_logging()
     for logger in ("discord.client", "discord.gateway", "discord.http"):
         logging.getLogger(logger).addFilter(ShortNetworkErrors())
     for logger in ("httpx", "httpx2", "httpcore"):  # one line per HTTP request is too much
         logging.getLogger(logger).setLevel(logging.WARNING)
-    bot.run(TOKEN, log_handler=None)
+    bot.run(read_secret("discord-token.txt"), log_handler=None)
