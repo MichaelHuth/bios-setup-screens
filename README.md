@@ -169,6 +169,34 @@ an AI server.
   "env": { "MCP_WORK_DIR": "C:/bios" } } } }
 ```
 
+## Tests
+
+```powershell
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+No BIOS images are needed: the tests build their own firmware images and tiny x86 ROMs.
+
+| File | What it checks |
+| --- | --- |
+| `test_decompress.py` | LH5, EFI/Tiano and LZSS give back known input (from the tests' own encoders); output caps |
+| `test_formats.py` | AMI and Phoenix module chains, TrustedCore volumes, Award option lists and labels, PhoenixBIOS 4.0 templates |
+| `test_emulator.py` | the emulator with hand-assembled ROMs: text, keys (INT 16h and the 8042), CMOS, timer, resets, run limits |
+| `test_robustness.py` | damaged and random input fails only with `ValueError`; tools write only in the user's folder |
+| `test_web.py`, `test_workspace.py`, `test_limits.py`, `test_bot.py` | blocked addresses and DNS pinning (offline), per-user folders, quotas, zip bombs, which messages are answered, question limits |
+| `test_isolation.py`, `test_mcp_server.py` | the per-question tool process (limits and, on Windows, low integrity) and the MCP server |
+
+The corpus check rebuilds a folder of real BIOS files and compares each with
+`tests/corpus_manifest.json` (matched by SHA-256, with a fingerprint of route, page count and
+page text). It runs only when `BIOS_CORPUS` is set:
+
+```powershell
+$env:BIOS_CORPUS = "C:\bios-files"; python -m pytest tests/test_corpus.py
+```
+
+After an intended change, remake the manifest with `python tests/corpus.py --make C:\bios-files`.
+
 ## Licence
 
 MIT, see [LICENSE](LICENSE). The AMI and Phoenix module readers are written from the image
