@@ -4,7 +4,10 @@ are parsed and their code emulated there, not in the bot. A crash, a hang or a m
 in a parser ends that process, not the bot; the next call starts a fresh one.
 
 On Windows the process is put into a job object: at most MEMORY_LIMIT of memory, at most a few
-processes (7-Zip is started from it), and it is killed with the job when the bot ends.
+processes (7-Zip is started from it), and it is killed with the job when the bot ends. It also
+runs at low integrity: before it reads a request it lowers its own token, so it can write only
+where a low integrity label allows it, the work folder (labelled once by the bot, inherited by
+the folders and files in it); its temporary files go to work/_tmp.
 
 The worker reads one JSON request per line on stdin and answers one JSON line on stdout:
 {"name", "args", "channel_id", "user_id"} -> {"result", "files", "bundle", "notes"} or
@@ -20,7 +23,9 @@ import ctypes
 import io
 import json
 import os
+import subprocess
 import sys
+import tempfile
 from ctypes import wintypes
 from pathlib import Path
 from typing import Any
@@ -30,6 +35,8 @@ CALL_SECONDS = int(os.getenv("TOOL_CALL_SECONDS", "900"))  # (an emulated setup 
 MEMORY_LIMIT = int(os.getenv("TOOL_MEMORY_MB", "4096")) << 20
 MAX_PROCESSES = 8  # (the worker and the 7-Zip runs it starts)
 DESCRIBE = "_describe"  # (not a model tool: a saved attachment's one-line description)
+LOW_INTEGRITY = "S-1-16-4096"
+TEMP_FOLDER = "_tmp"  # (in the work folder: the quota code only looks at numeric folders)
 
 
 # --- in the bot ----------------------------------------------------------------------------
@@ -94,6 +101,48 @@ def _job_limits(pid: int) -> None:
 
 
 _JOBS: dict[int, int] = {}
+CREATE_SUSPENDED = 0x4 if sys.platform == "win32" else 0
+
+
+def _resume(pid: int) -> None:
+    """Let a process created suspended run (all its threads)."""
+    if sys.platform != "win32":
+        return
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    process = kernel32.OpenProcess(0x0800, False, pid)  # (PROCESS_SUSPEND_RESUME)
+    if not process:
+        raise OSError(ctypes.get_last_error(), "the tool process could not be started")
+    try:
+        if ctypes.WinDLL("ntdll").NtResumeProcess(wintypes.HANDLE(process)):
+            raise OSError("the tool process could not be started")
+    finally:
+        kernel32.CloseHandle(wintypes.HANDLE(process))
+
+
+_labelled: set[Path] = set()
+
+
+def _label_work_dir(work: Path) -> None:
+    """Give the work folder a low integrity label that its folders and files inherit (the
+    files already in it get it too), so the low-integrity tool process can write there."""
+    if sys.platform != "win32" or work in _labelled:
+        return
+    (work / TEMP_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    def icacls(*args: str) -> int:
+        return subprocess.run(
+            ["icacls", str(work), *args, "/Q"], capture_output=True, timeout=600, check=False
+        ).returncode
+
+    done = icacls("/setintegritylevel", "(OI)(CI)L")
+    if done:  # (a label needs full control, which a parent folder's rights may not give)
+        user = "\\".join(filter(None, (os.getenv("USERDOMAIN"), os.getenv("USERNAME"))))
+        if not icacls("/grant", f"{user}:(OI)(CI)F"):
+            done = icacls("/setintegritylevel", "(OI)(CI)L")
+    if done:
+        raise OSError(f"the work folder could not be prepared for the tool process ({done})")
+    _labelled.add(work)
 
 
 class ToolFailed(Exception):
@@ -114,6 +163,10 @@ class Worker:
         self.lock = asyncio.Lock()  # (the model may ask for several tools in one step)
 
     async def _start(self) -> asyncio.subprocess.Process:
+        # pylint: disable=import-outside-toplevel
+        import workspace
+
+        await asyncio.to_thread(_label_work_dir, workspace.WORK_DIR.resolve())
         proc = await asyncio.create_subprocess_exec(
             sys.executable,
             "-I",
@@ -122,9 +175,13 @@ class Worker:
             stdout=asyncio.subprocess.PIPE,
             limit=64 << 20,  # (one answer line can hold a page image)
             cwd=HERE,
+            # (suspended until it is in the job: a venv's python.exe is a launcher that starts
+            # the real interpreter at once, which must start inside the job too)
+            creationflags=CREATE_SUSPENDED,
         )
         try:
             _job_limits(proc.pid)
+            _resume(proc.pid)
         except OSError:
             proc.kill()
             await proc.wait()
@@ -195,6 +252,37 @@ async def run(name: str, args: dict) -> Any:
 # --- in the tool process -------------------------------------------------------------------
 
 
+def _lower_integrity() -> None:
+    """Lower this process's token to low integrity (a process may lower its own, not raise
+    it): from here on every file it opens is checked at that level, also in the 7-Zip runs
+    it starts. Raises OSError where Windows refuses."""
+
+    class SidAndAttributes(ctypes.Structure):
+        _fields_ = [("Sid", ctypes.c_void_p), ("Attributes", wintypes.DWORD)]
+
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    advapi32.GetLengthSid.restype = wintypes.DWORD
+    advapi32.GetLengthSid.argtypes = [ctypes.c_void_p]
+    token, sid = wintypes.HANDLE(), ctypes.c_void_p()
+    if not advapi32.OpenProcessToken(
+        wintypes.HANDLE(kernel32.GetCurrentProcess()), 0x0080 | 0x0008, ctypes.byref(token)
+    ):  # (TOKEN_ADJUST_DEFAULT | TOKEN_QUERY)
+        raise OSError(ctypes.get_last_error(), "OpenProcessToken")
+    try:
+        if not advapi32.ConvertStringSidToSidW(LOW_INTEGRITY, ctypes.byref(sid)):
+            raise OSError(ctypes.get_last_error(), "ConvertStringSidToSidW")
+        label = SidAndAttributes(sid, 0x20)  # (SE_GROUP_INTEGRITY)
+        size = ctypes.sizeof(label) + advapi32.GetLengthSid(sid)
+        if not advapi32.SetTokenInformation(token, 25, ctypes.byref(label), size):
+            raise OSError(ctypes.get_last_error(), "SetTokenInformation")  # (TokenIntegrityLevel)
+    finally:
+        if sid:
+            kernel32.LocalFree(sid)
+        kernel32.CloseHandle(token)
+
+
 async def _serve() -> None:
     sys.path.insert(0, str(HERE))
     # pylint: disable=import-outside-toplevel
@@ -202,6 +290,11 @@ async def _serve() -> None:
     import screen_tools
     import workspace
 
+    temp = workspace.WORK_DIR.resolve() / TEMP_FOLDER
+    tempfile.tempdir = str(temp)
+    os.environ["TEMP"] = os.environ["TMP"] = str(temp)  # (for 7-Zip too)
+    if sys.platform == "win32":
+        _lower_integrity()  # (before the first request: no uploaded data was read yet)
     out = sys.stdout
     sys.stdout = sys.stderr  # (stdout carries the answers: anything printed goes to the log)
     loop = asyncio.get_running_loop()
@@ -225,6 +318,7 @@ async def _serve() -> None:
                 "files": [str(p) for p in workspace.pending_files.get()],
                 "bundle": [str(p) for p in workspace.pending_bundle.get()],
                 "notes": list(workspace.pending_notes.get()),
+                "pid": os.getpid(),  # (the interpreter itself, behind a venv's launcher)
             }
         except Exception as e:  # pylint: disable=broad-exception-caught
             answer = {"error": f"{type(e).__name__}: {e}", "raised": type(e).__name__}
