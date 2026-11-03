@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8.3
+hypothesis>=6.122
+black>=24.0
+mypy>=1.10
+pylint>=3.2

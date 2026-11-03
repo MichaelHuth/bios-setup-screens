@@ -2,6 +2,14 @@
 line-length = 100
 extend-exclude = "^/(devtools|work|fonts)/"
 
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-p no:cacheprovider"
+filterwarnings = [
+    # (discord.py's own use of a deprecated asyncio function)
+    "ignore:'asyncio.iscoroutinefunction' is deprecated:DeprecationWarning",
+]
+
 [tool.mypy]
 python_version = "3.14"
 files = ["*.py"]
