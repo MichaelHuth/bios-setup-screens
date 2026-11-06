@@ -1472,6 +1472,7 @@ class BiosEmulator:
         )
         self.chip_smbus = "sis" if sis else "ali" if ali else ""
         self.chip_smbus_end, self.chip_smbus_bar = False, bytearray(2)
+        self.sis_cleared_reads = -1  # reads since the SiS status was cleared (-1: not cleared)
         if self.chip_smbus:
             self.pam_valid = False  # (no Intel PAM: C0000-FFFFF plain RAM)
         if any(c[0:2] == b"\x06\x11" for c in self.pci_devices.values()):
@@ -3588,7 +3589,9 @@ class BiosEmulator:
         The end of a transaction the BIOS cleared before it looked comes again when polled (a
         block transfer: once per byte). SiS: its register map, and the end as status bits 3
         and 4 (some boards wait for 18h); the device error is not passed on (POST stops on
-        it on others)."""
+        it on others). After the BIOS clears the status register (FFh), the first read gives
+        the old answer and the next ones bit 7 as well, until a new transaction starts: MSI
+        6567's POST clears it and then polls for bit 7, ASUS's SiS 645 boards read it once."""
         sis = self.chip_smbus == "sis"
         if sis and off != 0:
             src = SIS_SMBUS_READ.get(off)
@@ -3599,7 +3602,12 @@ class BiosEmulator:
             self.smbus[0] |= 0x82
             self.chip_smbus_end = False
         if sis:
-            return 0x18 if self.smbus[0] & 0x82 else 0
+            status = 0x18 if self.smbus[0] & 0x82 else 0
+            if self.sis_cleared_reads >= 0:
+                if self.sis_cleared_reads:
+                    status |= 0x80
+                self.sis_cleared_reads += 1
+            return status
         return self.smbus[0]
 
     def _chip_smbus_write(self, off: int, value: int) -> bool:
@@ -3609,10 +3617,14 @@ class BiosEmulator:
             if off == 2 and value & 0x40 or off == 7:  # a start, a block byte
                 self.chip_smbus_end = True
             return False
+        if off == 0 and value == 0xFF:  # status cleared: see _chip_smbus_read (bit 7)
+            self.sis_cleared_reads = 0
         dst = SIS_SMBUS_WRITE.get(off)
         if dst is None:
             return True
         if off == 3:  # HOST_CNT: start in bit 4, protocol in bits 0-2
+            if value & 0x10:
+                self.sis_cleared_reads = -1
             self.chip_smbus_end = self.chip_smbus_end or bool(value & 0x10)
             value = (value & 0x10) << 2 | (value & 0x07) << 2
         elif off == 8:
