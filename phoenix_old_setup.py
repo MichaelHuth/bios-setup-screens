@@ -84,11 +84,17 @@ def is_old_phoenix(rom: bytes) -> bool:
 def _images(rom: bytes) -> list[bytes]:
     """The image as it is, then its other 64 KB blocks that end with a far jump into segment
     F000, from the end: a dump whose last block is a flash boot block or has no reset
-    vector has its BIOS in another one (Dell Dimension XPS, Emerson XT)."""
+    vector has its BIOS in another one (Dell Dimension XPS, Emerson XT). When the image's own
+    end has no reset vector, the whole image turned so that such a block is last comes first
+    of those: its halves were stored the other way round (Intel's 1992 Premiere update, whose
+    E000 half the BIOS needs too)."""
     out = [rom]
+    ends_with_vector = rom[-16] == 0xEA and rom[-13:-11] == b"\x00\xf0"
     for end in range(len(rom) // 0x10000 * 0x10000 - 0x10000, 0, -0x10000):
         v = rom[end - 16 : end - 11]
         if v[0] == 0xEA and v[3:5] == b"\x00\xf0":
+            if not ends_with_vector and len(out) == 1:
+                out.append(rom[end:] + rom[:end])
             out.append(rom[end - 0x10000 : end])
     return out
 
