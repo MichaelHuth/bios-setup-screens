@@ -214,7 +214,11 @@ class WinBios:
             # whichever limit stopped it)
             if not emu.stopped_reason.startswith(("booting", "instruction limit", "time limit")):
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
-            self.entry = find_entry(bytes(emu.uc.mem_read(0xF0000, 0x10000)))
+            runtime = bytes(emu.uc.mem_read(0xF0000, 0x10000))
+            if b"AMIBIOSS" not in runtime and not emu.stopped_reason.startswith("booting"):
+                # (a loop, not the end of POST: the setup module is unpacked only at its end)
+                raise ValueError(f"POST did not finish: {emu.stopped_reason}")
+            self.entry = find_entry(runtime)
             # the setup module loader looks for the copies of the ROM the boot block made
             # (memory tests have overwritten them since): at 2000:0 the half with the module
             # table ("AMIBIOSC"), at 1000:0 the other one (modules flagged with bit 7). Most

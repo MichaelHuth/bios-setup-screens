@@ -125,16 +125,26 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
         if "SETUP UTIL" not in screen.text():
             # with the timer interrupt running and DEL pressed when POST offers it (Top Star
             # TM-845GL: POST waits for a timer tick after copying its SMM handler, and
-            # boots without an error pause)
+            # boots without an error pause); it gets the error pause's keys too (6351v20: with
+            # the timer running POST waits 170 ticks, then pauses with "Press F1 to Run SETUP",
+            # about 500 M instructions in)
             retry = bios_emu.BiosEmulator(
                 rom,
                 cmos=ami_setup.default_cmos(),
-                max_instructions=100_000_000,
+                max_instructions=600_000_000,
                 hints=hints,
                 timer_irq=True,
             )
+            retry.max_seconds = 400
             retry.press_keys(DEL, when_text="DEL")
             again = retry.run(0xF000, 0xFFF0)
+            for _ in range(3):
+                if "SETUP UTIL" in again.text() and award_emu_setup.cursor(again) is not None:
+                    break
+                if retry.stopped_reason not in award_emu_setup.WAITING:
+                    break
+                retry.press_keys(F1 if "F1 TO RUN SETUP" in again.text().upper() else DEL)
+                again = retry.resume()
             if "SETUP UTIL" in again.text() and award_emu_setup.cursor(again) is not None:
                 emu, screen = retry, again
         if "SETUP UTIL" not in screen.text():

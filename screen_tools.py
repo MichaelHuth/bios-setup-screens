@@ -371,16 +371,22 @@ def _open_zip(data: bytes) -> zipfile.ZipFile:
 
 
 def _seven_zip_member(source: str, member: dict) -> bytes:
-    """A member's bytes, by its path or else by "*\\" and its file name (7-Zip lists a RAR5
-    folder name it then does not match: X99-QD4's "... __BIOS\\QD4V01.bin"); b"" if neither."""
+    """A member's bytes, by its path or else by its file name in any folder (7-Zip lists RAR5
+    folder names it then does not match: X99-QD4's "... __BIOS\\QD4V01.bin", JGINYUE X99M's
+    folders with Chinese names); b"" if neither. When the name is in several folders, 7-Zip
+    writes them all one after another: the first is taken (JGINYUE X99M: two copies)."""
     path = member["Path"]
+    size = int(member["Size"])
+    name = path.replace("/", "\\").rsplit("\\", 1)[-1]
     assert SEVEN_ZIP is not None
-    for pattern in (path, "*\\" + path.replace("/", "\\").rsplit("\\", 1)[-1]):
+    for args in ([source, path], ["-r", source, name]):
         try:
-            data = _seven_zip_output([SEVEN_ZIP, "e", "-so", "-p-", source, pattern], 120)
+            data = _seven_zip_output([SEVEN_ZIP, "e", "-so", "-p-"] + args, 120)
         except (OSError, subprocess.SubprocessError):
             return b""
-        if len(data) == int(member["Size"]) or pattern != path or "\\" not in path:
+        if args[0] == "-r" and size and len(data) > size and len(data) % size == 0:
+            return data[:size]
+        if len(data) == size or args[0] == "-r" or "\\" not in path:
             return data
     return b""
 
@@ -484,9 +490,10 @@ def _seven_zip_image(raw: bytes, depth: int = 0) -> bytes | None:
             and 0x2000 <= int(sized[0]["Size"]) < 0x10000
         ):
             return _seven_zip_member(source, sized[0])  # (one small ROM alone: a 286's 32 KB)
-        if not images and not bio and len(pair) == 2 and pair[0]["Size"] == pair[1]["Size"]:
+        if not images and not bio and 2 <= len(pair) <= 6:
             # two EPROMs of a 16-bit ROM (a RAR with "..._H_ODD.BIN" and "..._L_EVEN.BIN"):
-            # put into a ZIP in memory for _rom_pair
+            # put into a ZIP in memory for _rom_pair, which also picks the named pair from a
+            # few files of that size (G2B6MF's ..._LO.BIN and ..._HI.BIN beside devices.BIN)
             buffer = io.BytesIO()
             with zipfile.ZipFile(buffer, "w") as two:
                 for m in pair:
@@ -1922,6 +1929,12 @@ UNSUPPORTED_FAMILIES = [
     ),
     (b"HIFLEX SETUP UTILITY", "an AMIBIOS with the Hi-Flex text-mode setup (about 1996-98)"),
     (b"BCPFFV", "a Phoenix TrustedCore/SecureCore firmware (FFV volumes, about 2006-10)"),
+    (
+        b"IBM PC Co. BIOS ",  # (the filler of each 64 KB block, module IBMCORE: Netfinity
+        # 1000/3000, PC 365)
+        "an IBM PC Company BIOS (IBM's own core, about 1996-2001; its body, setup "
+        "included, is packed by IBM's boot block)",
+    ),
     (
         b"PhoenixBIOS 4.0",
         "a PhoenixBIOS 4.0 (menu-bar setup: Main, Advanced, Security, Power, Boot, Exit)",
