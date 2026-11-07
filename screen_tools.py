@@ -490,9 +490,10 @@ def _seven_zip_image(raw: bytes, depth: int = 0) -> bytes | None:
             and 0x2000 <= int(sized[0]["Size"]) < 0x10000
         ):
             return _seven_zip_member(source, sized[0])  # (one small ROM alone: a 286's 32 KB)
-        if not images and not bio and len(pair) == 2 and pair[0]["Size"] == pair[1]["Size"]:
+        if not images and not bio and 2 <= len(pair) <= 6:
             # two EPROMs of a 16-bit ROM (a RAR with "..._H_ODD.BIN" and "..._L_EVEN.BIN"):
-            # put into a ZIP in memory for _rom_pair
+            # put into a ZIP in memory for _rom_pair, which also picks the named pair from a
+            # few files of that size (G2B6MF's ..._LO.BIN and ..._HI.BIN beside devices.BIN)
             buffer = io.BytesIO()
             with zipfile.ZipFile(buffer, "w") as two:
                 for m in pair:
