@@ -371,16 +371,22 @@ def _open_zip(data: bytes) -> zipfile.ZipFile:
 
 
 def _seven_zip_member(source: str, member: dict) -> bytes:
-    """A member's bytes, by its path or else by "*\\" and its file name (7-Zip lists a RAR5
-    folder name it then does not match: X99-QD4's "... __BIOS\\QD4V01.bin"); b"" if neither."""
+    """A member's bytes, by its path or else by its file name in any folder (7-Zip lists RAR5
+    folder names it then does not match: X99-QD4's "... __BIOS\\QD4V01.bin", JGINYUE X99M's
+    folders with Chinese names); b"" if neither. When the name is in several folders, 7-Zip
+    writes them all one after another: the first is taken (JGINYUE X99M: two copies)."""
     path = member["Path"]
+    size = int(member["Size"])
+    name = path.replace("/", "\\").rsplit("\\", 1)[-1]
     assert SEVEN_ZIP is not None
-    for pattern in (path, "*\\" + path.replace("/", "\\").rsplit("\\", 1)[-1]):
+    for args in ([source, path], ["-r", source, name]):
         try:
-            data = _seven_zip_output([SEVEN_ZIP, "e", "-so", "-p-", source, pattern], 120)
+            data = _seven_zip_output([SEVEN_ZIP, "e", "-so", "-p-"] + args, 120)
         except (OSError, subprocess.SubprocessError):
             return b""
-        if len(data) == int(member["Size"]) or pattern != path or "\\" not in path:
+        if args[0] == "-r" and size and len(data) > size and len(data) % size == 0:
+            return data[:size]
+        if len(data) == size or args[0] == "-r" or "\\" not in path:
             return data
     return b""
 
