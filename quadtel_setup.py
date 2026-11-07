@@ -31,6 +31,7 @@ F2, ENTER, ESC = [0x3C, 0xBC], [0x1C, 0x9C], [0x01, 0x81]
 PGDN = [0x51, 0xD1]
 DOWN = [0x50, 0xD0]
 MENU_ITEMS = 6
+SKIP_PROMPT = b"Press <Esc> to skip memory test"
 # cli; mov al,0BFh; out 70h,al; jmp ...; in al,64h; test al,4: the 3.0x boot entry
 BOOT_ENTRY = re.compile(rb"\xfa\xb0\xbf\xe6\x70\xe9..\xe4\x64\xa8\x04", re.S)
 FRAME = set("█▀▄─│┌┐└┘├┤┬┴┼═║╔╗╚╝╠╣╦╩╬░▒▓ ")
@@ -42,6 +43,8 @@ def is_quadtel(rom: bytes) -> bool:
     if b"Quadtel" not in rom:
         return False
     if TITLE in rom and b"F2 ==> SETUP" in rom:
+        return True
+    if b"Main Menu Setup/" in rom:  # (its menu's key line: Quadtel 1993/94 cores, Tempustech)
         return True
     return b"BIOS Version 3.0" in rom and BOOT_ENTRY.search(rom) is not None
 
@@ -73,7 +76,14 @@ class QuadtelSetup:
         )
         emu.kbc_reset_in_place = True  # (POST returns from protected mode by a CPU reset)
         emu.boot_without_disk = True  # no system disk: POST offers F2 for setup
-        emu.press_keys(ESC * 3)  # skip the memory test
+        if SKIP_PROMPT in rom:  # (typed when the prompt is shown: dat286, Quadtel 286)
+            # (and F2 with it where POST offers setup while it runs: Tempustech SBC301)
+            emu.press_keys(
+                ESC + (F2 if b"Press <F2> to enter SETUP" in rom else []),
+                when_text="skip memory test",
+            )
+        else:
+            emu.press_keys(ESC * 3)  # skip the memory test
         screen = emu.run(0xF000, 0xFFF0)
         if emu.stopped_reason not in WAITING:
             raise ValueError(f"Quadtel POST did not offer setup (stopped: {emu.stopped_reason})")
