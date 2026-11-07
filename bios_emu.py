@@ -460,6 +460,10 @@ UMC_CHIPSET = [(16, 0, 0x8881, 0x060000), (18, 0, 0x886A, 0x060100)]
 # BIOSes whose IDs are only in the unpacked code (or not at all)
 BOOT_ACCESS: dict[bytes, int | str] = {
     bytes.fromhex("660d00800080"): "umc",  # device 16: UMC 8881
+    # (also as mov eax,80008050h and mov eax,800090A0h: device 16 register 50h and device 18
+    # register A0h of the UMC 8881/8886, PhoenixBIOS 4.0 on 881032j and 881avio)
+    bytes.fromhex("66b850800080"): "umc",
+    bytes.fromhex("66b8a0900080"): "umc",
     bytes.fromhex("660d00280080"): 0x0496,  # device 5: SiS 85C496
 }
 
