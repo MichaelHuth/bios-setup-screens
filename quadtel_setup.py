@@ -72,7 +72,13 @@ class QuadtelSetup:
                 off = (m.start() - len(rom)) & 0xFFFF
                 rom = rom[:-15] + bytes([off & 0xFF, off >> 8, 0x00, 0xF0]) + rom[-11:]
         emu = bios_emu.BiosEmulator(
-            rom, cmos=ami_setup.default_cmos(), max_instructions=200_000_000, timer_irq=True
+            rom,
+            cmos=ami_setup.default_cmos(),
+            max_instructions=200_000_000,
+            timer_irq=True,
+            # 4 MB where the memory test can be skipped: Esc is taken only between blocks of
+            # the test in protected mode, which is slow over 16 MB (dat286, Quadtel 286 HT12)
+            ram_mb=4 if SKIP_PROMPT in rom else 16,
         )
         emu.kbc_reset_in_place = True  # (POST returns from protected mode by a CPU reset)
         emu.boot_without_disk = True  # no system disk: POST offers F2 for setup
