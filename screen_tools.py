@@ -1930,6 +1930,12 @@ UNSUPPORTED_FAMILIES = [
     (b"HIFLEX SETUP UTILITY", "an AMIBIOS with the Hi-Flex text-mode setup (about 1996-98)"),
     (b"BCPFFV", "a Phoenix TrustedCore/SecureCore firmware (FFV volumes, about 2006-10)"),
     (
+        b"IBM PC Co. BIOS ",  # (the filler of each 64 KB block, module IBMCORE: Netfinity
+        # 1000/3000, PC 365)
+        "an IBM PC Company BIOS (IBM's own core, about 1996-2001; its body, setup "
+        "included, is packed by IBM's boot block)",
+    ),
+    (
         b"PhoenixBIOS 4.0",
         "a PhoenixBIOS 4.0 (menu-bar setup: Main, Advanced, Security, Power, Boot, Exit)",
     ),
