@@ -1,5 +1,6 @@
 """The firmware readers on images the tests build: AMI module chains, Phoenix BCP chains and
-TrustedCore volumes, Award option lists and extension labels, and PhoenixBIOS 4.0 templates.
+TrustedCore volumes, Award option lists and extension labels, PhoenixBIOS 4.0 templates and
+UEFI forms.
 Several cases are defects found in real images and fixed, kept here so they stay fixed."""
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import ami
 import award_setup
 import phoenix
 import phoenix_tc_setup as tc
+import uefi_setup
 from builders import (
     AmiModule,
     FfvFile,
@@ -268,3 +270,35 @@ def test_template_run_time_lists_of_phoenixbios_4_have_no_options() -> None:
         [pick_record(s.refs["Boot order:"], s.refs["help"], [s.refs["Floppy"]], mode=0x01)], s
     )
     assert items[0]["options"] == []
+
+
+# --- UEFI forms (IFR) -----------------------------------------------------------------------
+
+
+def ifr(code: int, data: bytes = b"", scope: bool = False) -> bytes:
+    return bytes((code, (len(data) + 2) | (0x80 if scope else 0))) + data
+
+
+def checkbox(prompt: int, qid: int) -> bytes:
+    # prompt, help, question id, var store, var offset, flags; then the checkbox flags
+    return ifr(0x06, struct.pack("<HHHHHBB", prompt, 6, qid, 1, 0, 0, 0))
+
+
+def test_a_setting_repeated_under_conditions_is_shown_once() -> None:
+    # the same checkbox for three CPUs, each under its own (here: false) SUPPRESS_IF, and one
+    # outside any condition twice (kept: nothing says only one is shown)
+    variants = b"".join(
+        ifr(0x0A, scope=True) + ifr(0x47) + checkbox(5, qid) + ifr(0x29) for qid in (10, 11, 12)
+    )
+    pkg = bytes(4) + (
+        ifr(0x0E, bytes(16) + struct.pack("<HHB", 1, 2, 0), scope=True)
+        + ifr(0x01, struct.pack("<HH", 1, 3), scope=True)
+        + variants
+        + checkbox(7, 20)
+        + checkbox(7, 21)
+        + ifr(0x29)
+        + ifr(0x29)
+    )
+    (form_set,) = uefi_setup._parse_ifr(pkg)
+    _, items = form_set.forms[1]
+    assert [(i["prompt"], i["qid"]) for i in items] == [(5, 10), (7, 20), (7, 21)]
