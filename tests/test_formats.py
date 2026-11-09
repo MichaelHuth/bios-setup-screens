@@ -225,13 +225,23 @@ def test_template_pick_item_with_options() -> None:
     assert items[0]["prompt"] == "Floppy A:" and items[0]["options"] == ["Disabled", "1.44 MB"]
 
 
-def test_template_marker_run_gives_no_options() -> None:
-    s = StringPack(["Language:", "Pick the language."])
+def test_template_marker_run_without_a_name_gives_no_options() -> None:
+    s = StringPack(["Language:", "Pick the language."])  # (its help follows the prompt)
     items = _items(
         [pick_record(s.refs["Language:"], s.refs["Pick the language."], [0xFF00, 0xFF01, 0xFF02])],
         s,
     )
     assert items[0]["prompt"] == "Language:" and items[0]["options"] == []
+
+
+def test_the_language_list_shows_the_name_after_its_prompt() -> None:
+    # (the strings pack names its own language right after the prompt: "Language:\0English")
+    s = StringPack(["Pick the language.", "Language:", "English  (US)"])
+    items = _items(
+        [pick_record(s.refs["Language:"], s.refs["Pick the language."], [0xFF00, 0xFF01, 0xFF02])],
+        s,
+    )
+    assert items[0]["options"] == ["English  (US)"]
 
 
 def test_template_references_into_the_middle_of_a_text_are_no_option() -> None:

@@ -169,8 +169,18 @@ class Strings:
         if not ref:
             return ""
         offset = _u16(self.pack, self.base + ref)
-        at = self.base + offset
-        if not offset or at >= len(self.pack):
+        return self._at(self.base + offset) if offset else ""
+
+    def after(self, ref: int) -> str:
+        """The text that follows ref's in the pack (after the language prompt: the name of
+        the pack's own language, "English  (US)")."""
+        if not ref or not (offset := _u16(self.pack, self.base + ref)):
+            return ""
+        end = self.pack.find(b"\0", self.base + offset)
+        return self._at(end + 1) if end >= 0 else ""
+
+    def _at(self, at: int) -> str:
+        if at >= len(self.pack):
             return ""
         end = self.pack.find(b"\0", at)
         text = self.pack[at:end] if 0 < end - at <= 400 else b""
@@ -266,9 +276,11 @@ def _options(strings: Strings, mode: int, fields: list[int], ptr: int) -> list[s
         return []
     refs = fields[7:]
     # (references step by 2, one table word each: a run stepping by 1, FF00h, FF01h, ..., is a
-    # marker of a list built at run time, the languages)
+    # marker of a list built at run time, the languages: the pack's own is shown, named by the
+    # text after the prompt)
     if any(refs[i + 2] == refs[i + 1] + 1 == refs[i] + 2 for i in range(len(refs) - 2)):
-        return []
+        name = strings.after(fields[0])
+        return [name] if name and name != strings(fields[1]) else []
     return [o for o in (strings(f) for f in refs if _text_start(strings, f)) if o]
 
 
