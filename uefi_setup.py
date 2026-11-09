@@ -586,11 +586,25 @@ def _parse_ifr(pkg: bytes) -> list[FormSet]:
                     if v is not None:
                         values[it["qid"]] = v
         for form_id, (title, items) in fs.forms.items():
-            items[:] = [
-                it
-                for it in items
-                if not any(_evaluate(c, values) is True for c in it.get("conds", ()))
-            ]
+            kept, shown = [], set()
+            for it in items:
+                if any(_evaluate(c, values) is True for c in it.get("conds", ())):
+                    continue
+                # (a setting under a condition that repeats one already shown is the same one
+                # for another CPU, board or memory type, whose option lists may differ: the
+                # firmware shows one of them, not 20 rows alike)
+                shown_value = next(
+                    (t for t, v in it.get("options", ()) if v == it["default"]), None
+                )
+                key = repr(
+                    sorted((k, v) for k, v in it.items() if k not in ("conds", "qid", "options"))
+                    + [("value", shown_value)]
+                )
+                if it.get("conds") and key in shown:
+                    continue
+                shown.add(key)
+                kept.append(it)
+            items[:] = kept
     return sets
 
 

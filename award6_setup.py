@@ -46,6 +46,17 @@ BAR_PAGES = (
     ("HW Monitor", ("Temperature", "FAN Speed")),
     ("PC Health", ("Temperature", "FAN Speed")),
 )
+# OEM menus without such a table of names (Soltek, QDI, Gigabyte's OEM boards): a page no entry
+# opens is named after what its first entry says, as the menu bars name such pages
+CONTENT_PAGES = (
+    ("Main", ("System Date", "System Time", "Date (", "Time (")),
+    ("Exit", ("Exit Saving", "Exit Without", "Exit discarding", "Exit Discarding", "Discard")),
+    ("Exit", ("Save & Exit", "Save Changes")),
+    ("Boot", ("Boot Device", "Boot Priority", "Quick Boot")),
+    ("Power", ("ACPI", "Power Management")),
+    ("Security", ("Password",)),
+    ("PC Health Status", ("Temperature", "FAN Speed")),
+)
 
 
 def language_module(image: bytes) -> bytes | None:
@@ -260,9 +271,16 @@ class Award6:
         """The page an entry opens (0: none, an action such as Save & Exit)."""
         return struct.unpack_from("<H", self.seg, e + 0x11)[0] >> self.target_shift
 
+    def _in_language(self, word: int) -> bool:
+        """Is word a text of the language module? Some BIOSes with a small one (4-11 KB; QDI's
+        of 1 KB) keep most labels and option lists as scripts in the system BIOS, as those
+        without a language module do: a word that names no text there is such an offset."""
+        return bool(self.lang) and self._interp(Screen(), ext=False).lang_offset(word) is not None
+
     def _label(self, e: int) -> str:
-        if self.lang:
-            return self.text(struct.unpack_from("<H", self.seg, e + 2)[0]).strip()
+        word = struct.unpack_from("<H", self.seg, e + 2)[0]
+        if self._in_language(word):
+            return self.text(word).strip()
         text = a._label_text(self.seg, struct.unpack_from("<H", self.seg, e + 2)[0])
         if any(not 32 <= ord(c) < 127 for c in text):  # a script that calls another one
             text = " ".join(self._drawn_label(e).split())  # (USI PRO-263: "Date (mm:dd:yyyy)")
@@ -293,7 +311,7 @@ class Award6:
 
     def _option_text(self, opt: int, index: int) -> bytes | None:
         """Entry index of an option list (NUL-separated; in the language module: an ID)."""
-        if not self.lang:
+        if self.lang is None or not self._in_language(opt):
             return a._option(self.seg, opt, index)
         off = self._interp(Screen(), ext=False).lang_offset(opt)
         if off is None:
@@ -316,7 +334,7 @@ class Award6:
     def _run_label(self, it: a.Interpreter, e: int) -> None:
         """Draw an item's label (a script, or a text of the language module)."""
         word = struct.unpack_from("<H", self.seg, e + 2)[0]
-        if self.lang:
+        if self._in_language(word):
             it.run_lang(word)
         else:
             it.run(word)
@@ -363,10 +381,11 @@ class Award6:
             first = next(
                 (label for label in (self._label(e) for _, e in self.items[page]) if label), ""
             )
-            for name, marks in BAR_PAGES:
-                if name in bar and name not in titles.values() and any(m in first for m in marks):
-                    titles[page] = name
-                    break
+            for name, marks in BAR_PAGES if bar else CONTENT_PAGES:
+                if (name in bar or not bar) and name not in titles.values():
+                    if any(m in first for m in marks):
+                        titles[page] = name
+                        break
         # a page no entry opens, whose entries open three or more pages and end the setup, is
         # the main menu (the OEM menus built by code list the pages as such an item page)
         for page in sorted(self.items):
@@ -379,6 +398,18 @@ class Award6:
                 and "Exit" in labels
             ):
                 titles[page] = "Main Menu"
+        # (without a table of names: a page that only opens others is the menu bar's Advanced
+        # tab, "Advanced Chipset Features", "Integrated Peripherals" ...)
+        for page in sorted(self.items):
+            opens = {self._target(e) for _, e in self.items[page]} - {0, page}
+            if (
+                not bar
+                and page not in titles
+                and "Advanced" not in titles.values()
+                and len(opens & set(self.items)) >= 2
+                and all(self._target(e) for _, e in self.items[page])
+            ):
+                titles[page] = "Advanced"
         return {p: titles.get(p, f"Page {p}") for p in sorted(self.items)}
 
     def _bar_table(self) -> bytes:
@@ -453,7 +484,10 @@ class Award6:
 
     def _help(self, e: int) -> str:
         p = struct.unpack_from("<H", self.seg, e + 0x17)[0]
-        if self.lang:
+        # (an entry whose label is a script of the system BIOS has its help in the extension
+        # module too, where 0019h is "STD_HELP": in the language module that word would name
+        # some other text)
+        if self._in_language(struct.unpack_from("<H", self.seg, e + 2)[0]):
             text = " ".join(self.text(p).split())
             return "" if re.fullmatch(r"[A-Z_]+", text) else text
         end = self.ext.find(b"\0", p)

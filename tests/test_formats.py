@@ -1,5 +1,6 @@
 """The firmware readers on images the tests build: AMI module chains, Phoenix BCP chains and
-TrustedCore volumes, Award option lists and extension labels, and PhoenixBIOS 4.0 templates.
+TrustedCore volumes, Award option lists and extension labels, PhoenixBIOS 4.0 templates and
+UEFI forms.
 Several cases are defects found in real images and fixed, kept here so they stay fixed."""
 
 from __future__ import annotations
@@ -13,6 +14,7 @@ import ami
 import award_setup
 import phoenix
 import phoenix_tc_setup as tc
+import uefi_setup
 from builders import (
     AmiModule,
     FfvFile,
@@ -225,13 +227,23 @@ def test_template_pick_item_with_options() -> None:
     assert items[0]["prompt"] == "Floppy A:" and items[0]["options"] == ["Disabled", "1.44 MB"]
 
 
-def test_template_marker_run_gives_no_options() -> None:
-    s = StringPack(["Language:", "Pick the language."])
+def test_template_marker_run_without_a_name_gives_no_options() -> None:
+    s = StringPack(["Language:", "Pick the language."])  # (its help follows the prompt)
     items = _items(
         [pick_record(s.refs["Language:"], s.refs["Pick the language."], [0xFF00, 0xFF01, 0xFF02])],
         s,
     )
     assert items[0]["prompt"] == "Language:" and items[0]["options"] == []
+
+
+def test_the_language_list_shows_the_name_after_its_prompt() -> None:
+    # (the strings pack names its own language right after the prompt: "Language:\0English")
+    s = StringPack(["Pick the language.", "Language:", "English  (US)"])
+    items = _items(
+        [pick_record(s.refs["Language:"], s.refs["Pick the language."], [0xFF00, 0xFF01, 0xFF02])],
+        s,
+    )
+    assert items[0]["options"] == ["English  (US)"]
 
 
 def test_template_references_into_the_middle_of_a_text_are_no_option() -> None:
@@ -258,3 +270,35 @@ def test_template_run_time_lists_of_phoenixbios_4_have_no_options() -> None:
         [pick_record(s.refs["Boot order:"], s.refs["help"], [s.refs["Floppy"]], mode=0x01)], s
     )
     assert items[0]["options"] == []
+
+
+# --- UEFI forms (IFR) -----------------------------------------------------------------------
+
+
+def ifr(code: int, data: bytes = b"", scope: bool = False) -> bytes:
+    return bytes((code, (len(data) + 2) | (0x80 if scope else 0))) + data
+
+
+def checkbox(prompt: int, qid: int) -> bytes:
+    # prompt, help, question id, var store, var offset, flags; then the checkbox flags
+    return ifr(0x06, struct.pack("<HHHHHBB", prompt, 6, qid, 1, 0, 0, 0))
+
+
+def test_a_setting_repeated_under_conditions_is_shown_once() -> None:
+    # the same checkbox for three CPUs, each under its own (here: false) SUPPRESS_IF, and one
+    # outside any condition twice (kept: nothing says only one is shown)
+    variants = b"".join(
+        ifr(0x0A, scope=True) + ifr(0x47) + checkbox(5, qid) + ifr(0x29) for qid in (10, 11, 12)
+    )
+    pkg = bytes(4) + (
+        ifr(0x0E, bytes(16) + struct.pack("<HHB", 1, 2, 0), scope=True)
+        + ifr(0x01, struct.pack("<HH", 1, 3), scope=True)
+        + variants
+        + checkbox(7, 20)
+        + checkbox(7, 21)
+        + ifr(0x29)
+        + ifr(0x29)
+    )
+    (form_set,) = uefi_setup._parse_ifr(pkg)
+    _, items = form_set.forms[1]
+    assert [(i["prompt"], i["qid"]) for i in items] == [(5, 10), (7, 20), (7, 21)]

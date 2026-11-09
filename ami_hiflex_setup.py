@@ -136,6 +136,11 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                 timer_irq=True,
             )
             retry.max_seconds = 400
+            # (400 s for all rounds: each one after an instruction limit would run another
+            # 600 M instructions, and a board the retry does not help took 1270 s, s08-11)
+            deadline = time.monotonic() + retry.max_seconds
+            hits = bios_emu.time_limits_hit.get()
+            hits_before = len(hits) if hits is not None else 0
             retry.press_keys(DEL, when_text="DEL")
             again = retry.run(0xF000, 0xFFF0)
             for _ in range(3):
@@ -143,10 +148,15 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                     break
                 if retry.stopped_reason not in award_emu_setup.WAITING:
                     break
+                if (left := deadline - time.monotonic()) <= 1:
+                    break
+                retry.max_seconds = int(left)
                 retry.press_keys(F1 if "F1 TO RUN SETUP" in again.text().upper() else DEL)
                 again = retry.resume()
             if "SETUP UTIL" in again.text() and award_emu_setup.cursor(again) is not None:
                 emu, screen = retry, again
+            elif hits is not None:  # (a retry whose result is not used cuts nothing short)
+                del hits[hits_before:]
         if "SETUP UTIL" not in screen.text():
             raise ValueError(
                 f"AMIBIOS Simple/Hi-Flex setup did not start (stopped: " f"{emu.stopped_reason})"

@@ -186,6 +186,14 @@ SELF_CLEARING = {
 # the SDRAM mode register set)
 # revision IDs of the steppings that were sold (some BIOSes stop on earlier ones; else 1)
 REVISIONS = {0x2570: 2, 0x2578: 2}
+# Hardware monitor at ports 295h/296h: the voltage inputs 20h-24h (16 mV a step) are the same
+# on Winbond and ITE chips: Vcore 1.6 V, 2.5 V, 3.3 V, 5 V (behind a 1.68 divider) and 12 V
+# (3.8-4.1); all ones showed as 4.08 V, 16.32 V ... on the hardware monitor pages
+HWMON_VOLTAGES = {0x20: 0x64, 0x21: 0x9C, 0x22: 0xCE, 0x23: 0xBA, 0x24: 0xBB}
+# ITE IT87xx (taken unless the BIOS chooses a Winbond-only register): -12 V at 25h (the scale of AMI's Hi-Flex
+# setup) or 26h (AMIBIOS 7's), 5 V standby at 27h, the battery at 28h, temperatures in degrees
+# at 29h-2Bh. Winbond has a temperature at 27h and fan counts at 28h-2Ah instead.
+HWMON_ITE = {0x25: 0x3D, 0x26: 0xEE, 0x27: 0xBA, 0x28: 0xBC, 0x29: 0x26, 0x2A: 0x20, 0x2B: 0x2D}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
     0x2440: {
@@ -1404,6 +1412,7 @@ class BiosEmulator:
         # Headland HT101/102 (286 boards, about 1988): index at 1EDh, data at 1EFh, read back
         self.headland_index, self.headland = 0, bytearray(256)
         self.hwmon_polled, self.hwmon_polls = None, 0  # (the fan count polled on and on)
+        self.hwmon_winbond = False  # (the BIOS chose a register only Winbond's chips have)
         self.reset_control = 0  # port CF9h
         self.umc = self.pci_devices.get((16, 0), b"")[0:2] == bytes.fromhex("6010")
         if self.umc:  # after reset: reads from the ROM, writes to the RAM behind it
@@ -3680,6 +3689,11 @@ class BiosEmulator:
             return self.apm_status  # AMIBIOS boot block resets while it reads non-zero, rc6103)
         if port == 0x295 and size == 1:  # Winbond hardware monitor's index: read back, not
             return self.hwmon_index & 0x7F  # busy (bit 7; AMIBIOS 7 waits for it, s85mir3l)
+        if port == 0x296 and size == 1:
+            index = self.hwmon_index & 0x7F
+            value = HWMON_VOLTAGES.get(index, None if self.hwmon_winbond else HWMON_ITE.get(index))
+            if value is not None:
+                return value
         if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in (0x28, 0x29, 0x2A):
             # Winbond fan counts read FFh (stopped) as before, unless the same one is polled
             # on and on: MSI MS-6380E waits at a "CPU fan" prompt reading Y/N from port 60h
@@ -4120,6 +4134,8 @@ class BiosEmulator:
             return
         if port == 0x295:
             self.hwmon_index = value & 0xFF
+            # (Winbond: fan divisors 47h, bank select 4Eh, vendor ID 4Fh)
+            self.hwmon_winbond = self.hwmon_winbond or value & 0x7F in (0x47, 0x4E, 0x4F)
         if 0xC000 <= port <= 0xCFFF and self.pci_cse & 0xF0:
             if self.pam_valid and not self.pci_used:
                 self._shadow_change(lambda: setattr(self, "pci_used", True))
