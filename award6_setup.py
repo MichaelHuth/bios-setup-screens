@@ -260,9 +260,16 @@ class Award6:
         """The page an entry opens (0: none, an action such as Save & Exit)."""
         return struct.unpack_from("<H", self.seg, e + 0x11)[0] >> self.target_shift
 
+    def _in_language(self, word: int) -> bool:
+        """Is word a text of the language module? Some BIOSes with a small one (4-11 KB; QDI's
+        of 1 KB) keep most labels and option lists as scripts in the system BIOS, as those
+        without a language module do: a word that names no text there is such an offset."""
+        return bool(self.lang) and self._interp(Screen(), ext=False).lang_offset(word) is not None
+
     def _label(self, e: int) -> str:
-        if self.lang:
-            return self.text(struct.unpack_from("<H", self.seg, e + 2)[0]).strip()
+        word = struct.unpack_from("<H", self.seg, e + 2)[0]
+        if self._in_language(word):
+            return self.text(word).strip()
         text = a._label_text(self.seg, struct.unpack_from("<H", self.seg, e + 2)[0])
         if any(not 32 <= ord(c) < 127 for c in text):  # a script that calls another one
             text = " ".join(self._drawn_label(e).split())  # (USI PRO-263: "Date (mm:dd:yyyy)")
@@ -293,7 +300,7 @@ class Award6:
 
     def _option_text(self, opt: int, index: int) -> bytes | None:
         """Entry index of an option list (NUL-separated; in the language module: an ID)."""
-        if not self.lang:
+        if self.lang is None or not self._in_language(opt):
             return a._option(self.seg, opt, index)
         off = self._interp(Screen(), ext=False).lang_offset(opt)
         if off is None:
@@ -316,7 +323,7 @@ class Award6:
     def _run_label(self, it: a.Interpreter, e: int) -> None:
         """Draw an item's label (a script, or a text of the language module)."""
         word = struct.unpack_from("<H", self.seg, e + 2)[0]
-        if self.lang:
+        if self._in_language(word):
             it.run_lang(word)
         else:
             it.run(word)
