@@ -460,7 +460,10 @@ class Award6:
 
     def _help(self, e: int) -> str:
         p = struct.unpack_from("<H", self.seg, e + 0x17)[0]
-        if self.lang:
+        # (an entry whose label is a script of the system BIOS has its help in the extension
+        # module too, where 0019h is "STD_HELP": in the language module that word would name
+        # some other text)
+        if self._in_language(struct.unpack_from("<H", self.seg, e + 2)[0]):
             text = " ".join(self.text(p).split())
             return "" if re.fullmatch(r"[A-Z_]+", text) else text
         end = self.ext.find(b"\0", p)
