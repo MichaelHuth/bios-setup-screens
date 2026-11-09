@@ -3119,7 +3119,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "4sbm7223-68249191be427939748473.zip",
   "screens": 9,
-  "text": "d3f8a04e20073d30"
+  "text": "2966629f270a49a1"
  },
  "1a807f633dfb3fa7820f975c968a834de8bb81dc42684aa6c510b4d78116ec9a": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -5367,7 +5367,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "dmc521-010111-67f81d991d123188701502.exe.bin",
   "screens": 9,
-  "text": "da8b550209a8abad"
+  "text": "3654661a52124ca7"
  },
  "2d9c230c552e93db0243a0d5030c67d76fdd009b6609a2ed0a20d69e2ba47573": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -7031,7 +7031,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "o740-227-6ab7cbe94190b089769130.exe.bin",
   "screens": 9,
-  "text": "e2c58bc7bb05044d"
+  "text": "e467dea72c10e6c8"
  },
  "3a260c0a71b683beee9615010a46c6980a3b7f759731736c8bffdf4e167aefd2": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -13563,7 +13563,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "4sgra043-654a6b7510e69867083771.exe.bin",
   "screens": 9,
-  "text": "6695817adca274de"
+  "text": "75deb2d87ff214fb"
  },
  "717019176cb3ea17e1f3e8c85b35b81dfd40acd07ccdc210f783a0fce867e0bd": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -14231,7 +14231,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "4sba7223-6824912e5404e073867464.zip",
   "screens": 9,
-  "text": "cb2f935dfc23712c"
+  "text": "fce45f25d48317fe"
  },
  "771b5b7ef9c36456058437c0896fa3440d85ee2759409aa71184c82a698d29a9": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15141,7 +15141,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "nupro-852-190-646c052f4ec3a782867070.zip",
   "screens": 9,
-  "text": "bc7af6c9afec5096"
+  "text": "c0b7389d5278e916"
  },
  "7df06d51bcdc0e34b73b7cb1fca1462b2667067e6caef897e5bcf670eab8311e": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -21699,7 +21699,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "8sgaa075-64138db7513eb243871161.bin",
   "screens": 9,
-  "text": "ce5ef016bebe59eb"
+  "text": "da873d357da9cd6d"
  },
  "b39aac3809bd733b3e480f42a2f396ad9531bfdc3d0e2c009bcc8920cf1ffb2a": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -22297,7 +22297,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "o740-123-6ab7ccb389976575083987.EXE.bin",
   "screens": 9,
-  "text": "44129017e4b2d492"
+  "text": "aa0b80c918279a1d"
  },
  "b8d792c6d89242dccd782b2babdff29c51fe0c1afb0a5ef04d5d15feddf200bb": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -27143,7 +27143,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "dsg43169-63f892750d732088793880.bin",
   "screens": 9,
-  "text": "6976ed99d6d09839"
+  "text": "b1444de2eeb7b20b"
  },
  "e03f6dbbbd5b70786fe30004669823d9de6e55dc686d04f2d0b789df347809af": {
   "bios": "Award Medallion BIOS 6.0: items from the system BIOS, texts ",
@@ -29169,7 +29169,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "ddr1103-64138a27a26b3264627959.bin",
   "screens": 9,
-  "text": "bf4b41a0c0c857b6"
+  "text": "17735004015c3398"
  },
  "f0b49cf0c6b7687fa201a18f56d5806190345c4e1c452735c4f6252b400b9894": {
   "bios": "PhoenixBIOS 4.0, setup read from the image without running i",
@@ -30447,7 +30447,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "dc66273-654b3f6278e14283975551.zip",
   "screens": 9,
-  "text": "3c67a343e7288c35"
+  "text": "878223117fdc23c5"
  },
  "facb9c0874eb883d1fe39947f164463dbe8469001c10a83133cbea958ee32177": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
