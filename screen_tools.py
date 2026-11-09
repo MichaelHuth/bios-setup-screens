@@ -2103,7 +2103,8 @@ def _award6_pages_screens(
         "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code (Soltek, HP): "
         "its item pages with frames, labels, options and help texts from the ROM; "
         "the OEM menu bar itself is not rebuilt, and pages are named after the "
-        "entries that open them (or numbered)"
+        "entries that open them, or after their first entries (Main, Boot, Exit ...), "
+        "or numbered"
     )
     return result
 

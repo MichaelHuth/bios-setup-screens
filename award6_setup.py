@@ -46,6 +46,17 @@ BAR_PAGES = (
     ("HW Monitor", ("Temperature", "FAN Speed")),
     ("PC Health", ("Temperature", "FAN Speed")),
 )
+# OEM menus without such a table of names (Soltek, QDI, Gigabyte's OEM boards): a page no entry
+# opens is named after what its first entry says, as the menu bars name such pages
+CONTENT_PAGES = (
+    ("Main", ("System Date", "System Time", "Date (", "Time (")),
+    ("Exit", ("Exit Saving", "Exit Without", "Exit discarding", "Exit Discarding", "Discard")),
+    ("Exit", ("Save & Exit", "Save Changes")),
+    ("Boot", ("Boot Device", "Boot Priority", "Quick Boot")),
+    ("Power", ("ACPI", "Power Management")),
+    ("Security", ("Password",)),
+    ("PC Health Status", ("Temperature", "FAN Speed")),
+)
 
 
 def language_module(image: bytes) -> bytes | None:
@@ -370,10 +381,11 @@ class Award6:
             first = next(
                 (label for label in (self._label(e) for _, e in self.items[page]) if label), ""
             )
-            for name, marks in BAR_PAGES:
-                if name in bar and name not in titles.values() and any(m in first for m in marks):
-                    titles[page] = name
-                    break
+            for name, marks in BAR_PAGES if bar else CONTENT_PAGES:
+                if (name in bar or not bar) and name not in titles.values():
+                    if any(m in first for m in marks):
+                        titles[page] = name
+                        break
         # a page no entry opens, whose entries open three or more pages and end the setup, is
         # the main menu (the OEM menus built by code list the pages as such an item page)
         for page in sorted(self.items):
@@ -386,6 +398,18 @@ class Award6:
                 and "Exit" in labels
             ):
                 titles[page] = "Main Menu"
+        # (without a table of names: a page that only opens others is the menu bar's Advanced
+        # tab, "Advanced Chipset Features", "Integrated Peripherals" ...)
+        for page in sorted(self.items):
+            opens = {self._target(e) for _, e in self.items[page]} - {0, page}
+            if (
+                not bar
+                and page not in titles
+                and "Advanced" not in titles.values()
+                and len(opens & set(self.items)) >= 2
+                and all(self._target(e) for _, e in self.items[page])
+            ):
+                titles[page] = "Advanced"
         return {p: titles.get(p, f"Page {p}") for p in sorted(self.items)}
 
     def _bar_table(self) -> bytes:
