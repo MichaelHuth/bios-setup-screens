@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import struct
 import time
+import types
 
 import pytest
 
 import bios_emu
+import screen_tools
 from minirom import CODE_AT, DS0, HALT, OUT, putc, rom, set_vector, store_al, text
+from textscreen import Screen
 
 
 def memory(emu: bios_emu.BiosEmulator, at: int, n: int = 1) -> bytes:
@@ -130,3 +133,53 @@ def test_halt_with_interrupts_off() -> None:
     emu = bios_emu.BiosEmulator(rom(text(b"OK") + HALT))
     screen = emu.run(0xF000, 0xFFF0)
     assert emu.stopped_reason == "halted" and screen.text().startswith("OK")
+
+
+WAIT_KEY = b"\xb4\x00\xcd\x16"  # mov ah,0 ; int 16h
+
+
+def test_the_post_screen_is_the_screen_at_the_first_key() -> None:
+    # POST counts memory and waits for a key; the key starts setup, which waits for more
+    emu = bios_emu.BiosEmulator(
+        rom(text(b"640K OK") + WAIT_KEY + text(b" SETUP") + WAIT_KEY + HALT)
+    )
+    emu.run(0xF000, 0xFFF0)
+    assert emu.post_screen is None  # (no key taken yet)
+    emu.keys.append(0x011B)
+    screen = emu.resume()
+    assert screen.text().startswith("640K OK SETUP")
+    assert emu.post_screen is not None
+    assert emu.post_screen.text() == "640K OK"
+    emu.keys.append(0x011B)  # (setup's own keys leave it)
+    emu.resume()
+    assert emu.post_screen.text() == "640K OK"
+
+
+def test_no_post_screen_where_the_program_did_not_start_at_the_reset_vector() -> None:
+    # (a setup entered directly, as the classic AMIBIOS route does, has no POST screen)
+    emu = bios_emu.BiosEmulator(rom(text(b"SETUP") + WAIT_KEY + HALT))
+    emu.run(0xF000, 0xE000)
+    emu.keys.append(0x011B)
+    emu.resume()
+    assert emu.post_screen is None
+
+
+def test_the_post_screen_goes_with_the_setup_screens() -> None:
+    def screen(s: bytes) -> Screen:
+        out = Screen()
+        out.write(0, 0, s, 0x07)
+        return out
+
+    class Setup:  # (a setup route's object: its emulator and its screens)
+        def __init__(self, post: bytes | None) -> None:
+            self.emu = types.SimpleNamespace(post_screen=post and screen(post))
+
+        def screens(self) -> list:
+            return [("MAIN", screen(b"MAIN MENU"), "")]
+
+    screens = screen_tools._with_post(Setup(b"640K OK"))
+    assert [t for t, _, _ in screens] == ["MAIN"]
+    assert screens.post is not None and screens.post.text() == "640K OK"
+    assert screen_tools._with_post(Setup(None)).post is None
+    # (a "POST screen" that is the setup itself, taken at setup's first key, is none)
+    assert screen_tools._with_post(Setup(b"MAIN MENU")).post is None

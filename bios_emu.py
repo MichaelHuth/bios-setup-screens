@@ -1432,6 +1432,10 @@ class BiosEmulator:
         self.scat_regs = bytearray(b"\xff" * 256)
         self.scat_regs[0x40], self.scat_regs[0x45], self.scat_regs[0x48] = 1, 0x37, 0xC0
         self.cr0_at_reset = 0  # (set by a driver whose POST checks it: chips_setup)
+        # the POST screen: the screen as it was when the program, started at the reset
+        # vector, took its first key (DEL, F1 at the error pause), as a person sees it
+        self.from_reset = False
+        self.post_screen: Screen | None = None
         self.fill_solid_font = False  # see screen() (set by winbios_setup)
         self.mylex_counter = False  # port 800h counts bytes (set by mylex_setup)
         self.protect_socket = False  # see _protect (set by mr_setup)
@@ -2840,6 +2844,8 @@ class BiosEmulator:
                     self.key_wanted, self.idle_looks = False, 0
                 if code < 0x80:
                     self._advance_ticks(9)  # about half a second passes between two keys
+            if byte < 0x80:
+                self._note_post_screen()
             self.hw_prev = self.hw_keys.pop(0)
             self.kbc_queue, self.irq_pending, self.kbc_aux = [self.hw_prev], True, False
         elif self.reply_grace > 0 and not self.irq_pending:
@@ -3074,6 +3080,7 @@ class BiosEmulator:
                 if not self.keys:
                     self.stopped_reason = "waiting for a key"
                     raise Stop()
+                self._note_post_screen()
                 uc.reg_write(UC_X86_REG_AX, self.keys.pop(0))
             elif ah in (0x01, 0x11):
                 self.key_polls += 1
@@ -3085,6 +3092,7 @@ class BiosEmulator:
                 elif self.key_polls < 3:
                     self._set_zf(True)
                 else:
+                    self._note_post_screen()
                     uc.reg_write(UC_X86_REG_AX, self.keys[0])
                     self._set_zf(False)
             elif ah in (0x02, 0x12):
@@ -4556,7 +4564,8 @@ class BiosEmulator:
         self, cs: int, ip: int, ss: int = 0x0030, sp: int = 0x0100, ds: int = 0x40, es: int = 0
     ) -> Screen:
         uc = self.uc
-        if (cs, ip) == (0xF000, 0xFFF0):
+        self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
+        if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
             vector = bytes(uc.mem_read(0xFFFF0, 5))
@@ -5054,6 +5063,13 @@ class BiosEmulator:
                 break
         for r, v in saved.items():
             uc.reg_write(r, v)
+
+    def _note_post_screen(self) -> None:
+        """Keep the screen as the POST screen, if this is the first key POST takes."""
+        if self.from_reset and self.post_screen is None:
+            screen = self.screen()
+            if screen.text().strip():
+                self.post_screen = screen
 
     def screen(self) -> Screen:
         if self.video_mode in PLANAR_MODES:
