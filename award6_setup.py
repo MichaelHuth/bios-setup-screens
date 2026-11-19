@@ -313,7 +313,8 @@ class Award6:
         """Entry index of an option list (NUL-separated; in the language module: an ID)."""
         if self.lang is None or not self._in_language(opt):
             return a._option(self.seg, opt, index)
-        off = self._interp(Screen(), ext=False).lang_offset(opt)
+        it = self._interp(Screen(), ext=False)
+        off = it.lang_offset(opt)
         if off is None:
             return None
         while (
@@ -322,14 +323,28 @@ class Award6:
             and not all(32 <= c < 127 for c in self.lang[off : off + 3])
         ):
             off += 3  # (ASUS P5VDC-TVM: a list may start with script jumps, "14 87 00")
-        for _ in range(index):
-            while self.lang[off] not in (0, 1):
+        # native calls and colors in an entry are skipped with their arguments (MSI's Cell
+        # Menu voltages: "10 E5 12 10 18 13 CPU Default 10 EE 12", native calls around the
+        # value), which may be 00h or 01h, the bytes that end an entry; another command
+        # (a cursor move) ends the text: what follows is no value
+        text = bytearray()
+        for _ in range(index + 1):
+            text.clear()
+            ended = False
+            while off < len(self.lang) and self.lang[off] not in (0, 1):
+                op = self.lang[off]
                 off += 1
+                if op > it.last_char:
+                    if not ended:
+                        text.append(op)
+                    continue
+                kind, nargs, _ = it.ops.get(op, ("end", 0, -1))
+                if kind in ("native", "color", "blink", "scheme", "unknown"):
+                    off += nargs  # (unknown: 16h/17h before "Disable" on Colorful's boards)
+                else:
+                    ended = True
             off += 1
-        end = off
-        while self.lang[end] not in (0, 1):
-            end += 1
-        return bytes(self.lang[off:end])
+        return bytes(text)
 
     def _run_label(self, it: a.Interpreter, e: int) -> None:
         """Draw an item's label (a script, or a text of the language module)."""
