@@ -47,6 +47,7 @@ import hfjump_setup
 import ami_setup
 import award6_setup
 import award_emu_setup
+import award_post
 import award_medallion_setup
 import award_menubar_setup
 import award_setup
@@ -250,7 +251,7 @@ _rendered: contextvars.ContextVar[list[tuple[str, Path]]] = contextvars.ContextV
 _style: contextvars.ContextVar[str] = contextvars.ContextVar("_style", default="")
 
 
-def _save(path: Path, title: str, screen: Screen | Image.Image) -> None:
+def _save(path: Path, title: str, screen: Screen | Image.Image, first: bool = False) -> None:
     try:
         rendered = _rendered.get()
     except LookupError:  # (outside a bios_setup_screens call)
@@ -267,7 +268,10 @@ def _save(path: Path, title: str, screen: Screen | Image.Image) -> None:
         screen.render(out)
     else:  # (a picture drawn in the setup's own graphical look)
         out = contact_sheet.save_compact(screen, out)
-    rendered.append((title, out))
+    if first:  # (the POST screen, added after the setup's pages: it comes first)
+        rendered.insert(0, (title, out))
+    else:
+        rendered.append((title, out))
 
 
 def _attach_screens(result: dict, rendered: list[tuple[str, Path]]) -> None:
@@ -1696,24 +1700,42 @@ def _setup_screens(
     raw = _unzipped(archive)
     award6_failure = None  # why an image with an awardext module was not read as 6.00PG
     try:  # Award 6.00PG full flash image (system BIOS + awardext module)
-        return _award6_screens(path, award6_setup.Award6(raw), pages, defaults)
+        return _award_post(
+            _award6_screens(path, award6_setup.Award6(raw), pages, defaults), path, raw, pages
+        )
     except ValueError as award6_error:
         if any(m["name"].lower().startswith("awardext") for m in lzh.find_modules(raw)):
             try:
-                return _menubar_screens(
-                    path, award_menubar_setup.AwardMenuBar(raw), pages, defaults
+                return _award_post(
+                    _menubar_screens(path, award_menubar_setup.AwardMenuBar(raw), pages, defaults),
+                    path,
+                    raw,
+                    pages,
                 )
             except ValueError as menubar_error:  # (4.51PG images have awardext too)
                 try:  # OEM setups whose main menu is code (Soltek, HP): the item pages
                     if lzh.find_modules(raw, limit=1) and language_module_present(raw):
-                        return _award6_pages_screens(
-                            path, award6_setup.Award6(raw, pages_only=True), pages, defaults
+                        return _award_post(
+                            _award6_pages_screens(
+                                path,
+                                award6_setup.Award6(raw, pages_only=True),
+                                pages,
+                                defaults,
+                            ),
+                            path,
+                            raw,
+                            pages,
                         )
                 except ValueError:
                     pass
                 try:  # OEM 6.00PG setups without a page frame script (Maxdata, IBM's USI)
-                    return _award6_screens(
-                        path, award6_setup.Award6(raw, drawn_frames=True), pages, defaults
+                    return _award_post(
+                        _award6_screens(
+                            path, award6_setup.Award6(raw, drawn_frames=True), pages, defaults
+                        ),
+                        path,
+                        raw,
+                        pages,
                     )
                 except ValueError:
                     pass
@@ -1735,7 +1757,7 @@ def _setup_screens(
         except ValueError:
             bios = None
         if bios is not None:
-            return _medallion_screens(path, bios, pages, defaults)
+            return _award_post(_medallion_screens(path, bios, pages, defaults), path, raw, pages)
     if winbios_setup.is_winbios(raw):
         return _winbios_screens(path, raw, pages, defaults, color)
     if mr_setup.is_mr_bios(raw):
@@ -1882,7 +1904,7 @@ def _setup_screens(
                 "texts."
             ) from award_error
         return _ami_screens(path, raw, pages, defaults, color)
-    return _award_screens(path, data, source, pages, defaults, raw)
+    return _award_post(_award_screens(path, data, source, pages, defaults, raw), path, raw, pages)
 
 
 # BIOS families recognised but not supported by bios_setup_screens (yet): (marker, description)
@@ -2230,19 +2252,37 @@ def _with_post(bios: Any) -> _Screens:
 POST_TITLE = "POST screen"
 
 
-def _add_post(result: dict, path: Path, post: Screen | None, wanted: str) -> None:
-    """The POST screen first, as page "post": with all pages or when asked for."""
+def _add_post(
+    result: dict, path: Path, post: Screen | None, wanted: str, rebuilt: str = ""
+) -> None:
+    """The POST screen first, as page "post": with all pages or when asked for. rebuilt:
+    its text, where the screen is rebuilt from the ROM's texts instead of captured."""
     if post is None:
         return
-    result["pages"] = {"post": POST_TITLE, **result["pages"]}
+    title = POST_TITLE + (" (rebuilt)" if rebuilt else "")
+    result["pages"] = {"post": title, **result["pages"]}
     if wanted == "all" or "post" in wanted.replace(" ", "").split(","):
-        _save(path, POST_TITLE, post)
-        result["screens"][POST_TITLE] = post.text()
+        _save(path, title, post, first=True)
+        result["screens"] = {title: rebuilt or post.text(), **result["screens"]}
         result["post"] = (
-            "The POST screen is what the ROM drew in the emulator before setup, at the "
-            "moment it took the setup key: the CPU, memory size and drives are the "
-            "emulated PC's, and CMOS errors appear because the CMOS was empty."
+            "The POST screen is rebuilt, not captured: POST does not run for this "
+            "route. Its texts are the ROM's own (banner, board message, BIOS ID, "
+            "the memory test and setup key lines, the Energy Star logo), placed as "
+            "Award's POST shows them; the memory size is only an example and the CPU "
+            "line is left out."
+            if rebuilt
+            else "The POST screen is what the ROM drew in the emulator before setup, at "
+            "the moment it took the setup key: the CPU, memory size and drives are "
+            "the emulated PC's, and CMOS errors appear because the CMOS was empty."
         )
+
+
+def _award_post(result: dict, path: Path, image: bytes, pages: str | None) -> dict:
+    """An Award route's result, with the POST screen rebuilt from the ROM's texts."""
+    post = award_post.post_screen(image)
+    if post is not None:
+        _add_post(result, path, post[0], (pages or "all").strip().lower(), post[1])
+    return result
 
 
 def _tc_screens(path: Path, rom: bytes, pages: str | None) -> dict:
