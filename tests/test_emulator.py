@@ -176,6 +176,30 @@ def test_dells_nvram_reads_empty_through_its_smi_port() -> None:
     assert memory(emu, OUT) == b"\x00"
 
 
+def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
+    # mov eax,2 ; cpuid ; mov [OUT],eax ; mov [OUT+4],edx ; mov ecx,2Ch ; rdmsr (patched)
+    code = (
+        DS0
+        + b"\x66\xb8\x02\x00\x00\x00\x0f\xa2"
+        + b"\x66\xa3"
+        + struct.pack("<H", OUT)
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT + 4)
+        + bios_emu.RDMSR_P4
+        + b"\x66\xa3"
+        + struct.pack("<H", OUT + 8)
+        + HALT
+    )
+    emu = bios_emu.BiosEmulator(rom(code), host_id=0x1A30)  # (a Pentium 4 host)
+    emu.msr_patch_end = 0x100000  # (patched in the ROM too, as POST would find it)
+    emu.post_codes_seen.update(range(3))
+    assert emu._patch_msr_reads()
+    emu.run(0xF000, 0xFFF0)
+    eax, edx, ratio = struct.unpack("<3I", memory(emu, OUT, 12))
+    assert (eax, edx) == (0x665B5001, 0x007B7040)  # (7Bh: 512 KB L2)
+    assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
+
+
 def test_the_post_screen_goes_with_the_setup_screens() -> None:
     def screen(s: bytes) -> Screen:
         out = Screen()
