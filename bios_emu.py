@@ -1255,6 +1255,10 @@ class BiosEmulator:
         # the least a channel-0 latch advances the count (see _out; NCR sets 0Ch)
         self.pit0_latch_floor = 0x25
         self.smi_ack_pending = False  # Dell's SMI waits to skip (DELL_SMI_WAIT)
+        # Dell's NVRAM through its SMM handler (set by dell_setup): B2h = 67h asks for the
+        # next byte, which the handler puts in B3h; it reads 00h, an empty NVRAM (the
+        # service tag, asset tag and their checksums)
+        self.dell_nvram = False
         self.ran_in_ram, self.flush_pending = False, False  # (see _out, port 80h)
         # SMRAM (see SMRAM_REGS): open, a change still to apply, and what the side not in
         # view holds (the video memory while SMRAM is open, else the SMRAM)
@@ -4218,6 +4222,8 @@ class BiosEmulator:
                 raise Stop()
             self.reset_control = value & 0xFF
         elif port == 0xB2 or port == self._via_smi_port():
+            if self.dell_nvram and port == 0xB2 and value & 0xFF == 0x67:
+                self.apm_status = 0x00
             # APM control (or a VIA software SMI command, PM I/O 2Fh: TriGem Santa Fe, Wyse
             # Cx0): raises an SMI. There is no SMM here; a program that waits for the handler
             # with "jp $" (the handler clears PF in the saved flags) or "jne $" (it sets ZF:

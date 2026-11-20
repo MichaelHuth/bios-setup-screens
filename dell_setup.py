@@ -112,6 +112,7 @@ class DellSetup:
             ram_mb=64,
         )
         emu.kbc_reset_in_place = True  # (the shutdown test resets the CPU)
+        emu.dell_nvram = True  # (the service and asset tags: empty)
         emu.io_reads = {0xC50: 0x00}  # the chipset heat sink is fitted (OptiPlex GX270)
         emu.max_seconds = 150
         screen = emu.run(0xF000, 0xFFF0)

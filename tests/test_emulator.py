@@ -164,6 +164,18 @@ def test_no_post_screen_where_the_program_did_not_start_at_the_reset_vector() ->
     assert emu.post_screen is None
 
 
+def test_dells_nvram_reads_empty_through_its_smi_port() -> None:
+    # out B3h,01h (a scratch byte) ; out B2h,67h (Dell's SMI: next NVRAM byte) ; in al,B3h
+    code = DS0 + b"\xb0\x01\xe6\xb3\xb0\x67\xe6\xb2\xe4\xb3" + store_al(OUT) + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\x01"  # (any other board: the scratch byte)
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.dell_nvram = True
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\x00"
+
+
 def test_the_post_screen_goes_with_the_setup_screens() -> None:
     def screen(s: bytes) -> Screen:
         out = Screen()
