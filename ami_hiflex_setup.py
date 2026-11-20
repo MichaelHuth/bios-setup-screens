@@ -33,6 +33,15 @@ TITLES = (
 DEL, F1 = [0x53, 0xD3], [0x3B, 0xBB]
 
 
+class PostStopped(ValueError):
+    """POST did not get to setup; what it had set up by then: the PCI configuration (devices)
+    and the VT82C686A's hardware-monitor registers (via_hwmon)."""
+
+    def __init__(self, message: str, emu: bios_emu.BiosEmulator) -> None:
+        super().__init__(message)
+        self.devices, self.via_hwmon = emu.pci_devices, bytes(emu.via_hwmon)
+
+
 def _modules(rom: bytes) -> list[dict]:
     try:
         return ami.extract(rom)[1]
@@ -158,8 +167,9 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             elif hits is not None:  # (a retry whose result is not used cuts nothing short)
                 del hits[hits_before:]
         if "SETUP UTIL" not in screen.text():
-            raise ValueError(
-                f"AMIBIOS Simple/Hi-Flex setup did not start (stopped: " f"{emu.stopped_reason})"
+            raise PostStopped(
+                f"AMIBIOS Simple/Hi-Flex setup did not start (stopped: " f"{emu.stopped_reason})",
+                emu,
             )
         emu.max_instructions = 50_000_000
         self.kind = "menu"

@@ -25,6 +25,7 @@ from typing import Any
 from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_EFLAGS
 
 import ami
+import ami_hiflex_setup
 import ami_setup
 import bios_emu
 from award_emu_setup import cursor
@@ -157,7 +158,13 @@ def garbled(screen: Screen) -> bool:
 class Direct:
     """The setup of an AMIBIOS Simple/Hi-Flex image, started without POST."""
 
-    def __init__(self, rom: bytes, max_instructions: int = 50_000_000) -> None:
+    def __init__(
+        self,
+        rom: bytes,
+        max_instructions: int = 50_000_000,
+        posted: ami_hiflex_setup.PostStopped | None = None,
+    ) -> None:
+        """posted: a POST that stopped before setup (what it had set up is taken from it)."""
         _info, mods = ami.extract(rom)
         by_id = {m["id"]: m for m in mods if m.get("data")}
         m1, m2, m4 = by_id.get(1), by_id.get(2), by_id.get(4)
@@ -176,6 +183,15 @@ class Direct:
         )
         self.emu = emu
         uc = emu.uc
+        # VT82C686A: its hardware monitor's I/O window (function 4, 70h-74h), which the setup
+        # reads at the base POST chose (AMI's VIA boards: C00h), and the monitor's registers as
+        # POST set them (fan divisors)
+        mine = emu.pci_devices.get((7, 4))
+        theirs = posted.devices.get((7, 4)) if posted is not None else None
+        if posted is not None and mine is not None and theirs is not None:
+            if mine[0:4] == theirs[0:4] and theirs[0x74] & 1:
+                mine[0x70:0x75] = theirs[0x70:0x75]
+                emu.via_hwmon[:] = posted.via_hwmon
         # the RunTime owns the F000 half from its real_off on: a module whose header also names
         # a place there (module 0B Int-10) is loaded elsewhere by POST, so it is left out
         rt_lo, rt_hi = base2, base2 + len(m2["data"])

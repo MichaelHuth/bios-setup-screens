@@ -2659,7 +2659,8 @@ def _hiflex_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _hiflex_direct_screens(path: Path, rom: bytes, pages: str | None, why: Exception) -> dict:
-    screens = _cached_screens(rom, lambda: _with_post(hfjump_setup.Direct(rom)))
+    posted = why if isinstance(why, ami_hiflex_setup.PostStopped) else None
+    screens = _cached_screens(rom, lambda: _with_post(hfjump_setup.Direct(rom, posted=posted)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS with the Simple/Hi-Flex text-mode setup, started directly in an x86 "
