@@ -347,6 +347,8 @@ def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
             ("Advanced Chipset Features", 4),
         ],
         13: [("Case Open Warning", 0), ("CPU Warning Temperature", 0), ("CPU FAN Speed", 0)],
+        14: [("Init Display First", 0), ("OnChip IDE Device", 0), ("Onboard Device", 0)],
+        17: [("PCI Slot 1  IRQ Select", 0), ("PCI Slot 2  IRQ Select", 0)],
         21: [  # (a page of all items: Power Management Setup is not its name)
             ("Advanced BIOS Features", 3),
             ("Advanced Chipset Features", 4),
@@ -372,6 +374,8 @@ def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
         5: "Power Management Setup",
         8: "Advanced",
         13: "HW Monitor",
+        14: "Integrated Peripherals",  # (Award's own names: the bar has none for them)
+        17: "PnP/PCI Configurations",
         21: "Page 21",
     }
 

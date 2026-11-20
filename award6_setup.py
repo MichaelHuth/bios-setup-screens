@@ -57,6 +57,15 @@ CONTENT_PAGES = (
     ("Security", ("Password",)),
     ("PC Health Status", ("Temperature", "FAN Speed")),
 )
+# and last, pages the menu bar has no name for: Award's own titles of the pages they are (by
+# marks of no other page among their first three entries)
+AWARD_PAGES = (
+    ("Integrated Peripherals", ("OnChip IDE Device", "OnChip PCI Device", "Onboard Device")),
+    ("Integrated Peripherals", ("Onboard PCI Device", "IDE Function Setup")),
+    ("PnP/PCI Configurations", ("Resources Controlled By", "IRQ Resources", "IRQ Select")),
+    ("Frequency/Voltage Control", ("Spread Spectrum", "Auto Detect DIMM/PCI Clk")),
+    ("Frequency/Voltage Control", ("Auto Detect PCI Clk",)),
+)
 # pages still unnamed after that: the menu bar's Advanced tab has entries that open these
 # next to options of its own (boot devices); a page that opens three or more pages with them
 # is a main menu or a page of all items, and stays unnamed
@@ -459,6 +468,12 @@ class Award6:
                 and (name in bar or not bar)
                 and name not in titles.values()
                 and any(m.lower() in label for label in head for m in marks + more)
+            ):
+                return name
+        words = [" ".join(label.split()) for label in head]  # (padded: "PCI Slot 1  IRQ")
+        for name, marks in AWARD_PAGES:
+            if name not in titles.values() and any(
+                m.lower() in label for label in words for m in marks
             ):
                 return name
         return ""
