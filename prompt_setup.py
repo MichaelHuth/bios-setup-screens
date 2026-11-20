@@ -26,6 +26,9 @@ class Family(NamedTuple):
     title: str  # what the setup's screen shows
     next_page: list[int] | None = None  # the key to the next page
     during: bool = False  # POST offers it in passing, without stopping
+    # memory; 5 MB is more than the CMOS's 640 KB + 3 MB, so a POST that offers its setup only
+    # after an error stops at "MEMORY SIZE ERROR", with the CMOS values kept
+    ram_mb: int = 4
 
 
 FAMILIES = (
@@ -35,6 +38,7 @@ FAMILIES = (
         "FOR SETUP",
         CTRL_ALT_ESC,
         "TG286 CMOS SETUP",
+        ram_mb=5,
     ),
     Family(
         "AST's BIOS of the Premium 386SX with its CMOS SETUP UTILITY",
@@ -62,7 +66,7 @@ class PromptSetup:
             cmos=ami_setup.default_cmos(),
             max_instructions=1_500_000_000,
             timer_irq=True,
-            ram_mb=4,
+            ram_mb=found.ram_mb,
         )
         emu.kbc_reset_in_place = True
         emu.max_seconds = 240
