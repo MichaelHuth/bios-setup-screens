@@ -827,7 +827,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "baby-286-659ef45015647812820533.zip",
   "screens": 2,
-  "text": "ead524771584815b"
+  "text": "7a5381d9d1878750"
  },
  "072243c0fbfd10be496f113a4ea78ddd64a49c6b4ef35f447d59e02464256ab0": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -2699,7 +2699,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "pem-2530-5fb048940e2fb219286547.zip",
   "screens": 3,
-  "text": "d7740e075f18e562"
+  "text": "d1957c2e627419cc"
  },
  "16aee771aee0c1f9aeb4956418add67a4bdea7b54c2d9dd02e2233fea33ee268": {
   "name": "r71116-65913f9f002cd236601159.exe.bin",
@@ -4561,7 +4561,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "out-6ac2fa1b2890e387424223.bin",
   "screens": 2,
-  "text": "ead524771584815b"
+  "text": "7a5381d9d1878750"
  },
  "26b12825db79c50b06f38baa760a41ddaed04cada84b3a1ebe8a2283eee3af85": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
@@ -7605,7 +7605,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "g2bmfv3-03-11-15-85-683f4a7b95446530382129.rar",
   "screens": 2,
-  "text": "fe34667db832931a"
+  "text": "1708e05388055667"
  },
  "3f75aa515059a8420eb651f7dab0fc06db66f719d9b5770ac3478a72f8ce035e": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -8087,7 +8087,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "peter286-616dd305edc79356435869.bin",
   "screens": 2,
-  "text": "d415fd2c5abacef4"
+  "text": "080b3fa21f744375"
  },
  "434d81effceb2f6f63f658becc5ea01bb70aebc8f29f32546b14d6116d57c112": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -9967,7 +9967,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "386-c3ti-arc-62baf24545eaa126788826.bin",
   "screens": 2,
-  "text": "2112c10cf7bc0870"
+  "text": "a2acdc157a078e97"
  },
  "51fac24caa0812b4833b7882241aee5a926b6ae000f38c9c9264f495638f5220": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -10857,7 +10857,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "kw-241-653ee04062220642476742.zip",
   "screens": 2,
-  "text": "1033fec1bd3cede9"
+  "text": "e748dd7680261c55"
  },
  "5a4b08bda140a2341321381d68871a530d721675271a4fcd021802ef5f0989fa": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -11055,7 +11055,7 @@
   "bios": "TriGem's TG286 BIOS with its CMOS SETUP, captured by running",
   "name": "tgs-6010-6798dbc553869291097010.zip",
   "screens": 2,
-  "text": "872b837963ecd740"
+  "text": "3db8affa37797dbc"
  },
  "5bd3fce09d77ebbfde51f10b8fed8ddb2c50605ec1abb1c72926e8fd23870332": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -11589,7 +11589,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "kt-0286-v3-66cb8f3e05280826268320.zip",
   "screens": 2,
-  "text": "c0897461e963f8ba"
+  "text": "2af3fb1fd04469de"
  },
  "60d32242bd24b0ad3b2b4d7799e3c4bf3aa83154c2e7d2766ce42338917eb1e4": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -13331,7 +13331,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "protech-suntac-award-646e5aa62e5c0405402304.zip",
   "screens": 2,
-  "text": "d415fd2c5abacef4"
+  "text": "080b3fa21f744375"
  },
  "6fde4238b84babb126fbf8a77e907a8ce6df52304e1036d91055524c4b74999b": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15135,7 +15135,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "protek-suntac286s-6695726c7030a906000476.zip",
   "screens": 2,
-  "text": "28fdd87994c42634"
+  "text": "755166a2860ab90c"
  },
  "7decd2e24d2f7ebf6beeec460408dcdd696e412ff2ddd6b8cd4b2d7a1989b948": {
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
@@ -15639,7 +15639,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "rom3-02310746-6230544b1648a575937689.zip",
   "screens": 2,
-  "text": "a54d8eac31317fe9"
+  "text": "ee666d79ce183890"
  },
  "81d673524fb5a75521dbcc96320c33d7e1c1cc1aad2a28a73b6e8852be94fbef": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -18766,8 +18766,10 @@
   "text": "831656fa28f02342"
  },
  "9b998c9f271e2cc25eabd723d23ae89f4735491ac80a28a02de21245590f01e1": {
+  "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "bios-archerival286-12-66327767431e8511659486.zip",
-  "result": "unsupported"
+  "screens": 2,
+  "text": "12270aec4cc3649b"
  },
  "9b9c1ddd18d4c56cbb64317caec2d32a4bda63b93a7e8363619de064545b40e3": {
   "name": "super10f-62e62bf360d49886894973.rom",
@@ -19463,7 +19465,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "hyundai-super286e-3-13c-66b2129f1e68a867426627.zip",
   "screens": 2,
-  "text": "66f11d034a3ae629"
+  "text": "d5b67b7210e59d32"
  },
  "a14c7027e9623677a28263c0728eb14de09d1720269f63e333268c11d1ecacf1": {
   "name": "5cpi123b-616f62fd29036082533551.zip",
@@ -21935,7 +21937,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "pat38pc-award-bios-date-11-22-89-s386-opti-05-modular-bios-v3-05aa-chtm1-3-683fff39ea38e062518871.zip",
   "screens": 2,
-  "text": "e292bf2983f94604"
+  "text": "e4907f001d9a6113"
  },
  "b59344a69fe27e2f2d7dfddc513a7b478656dcbc467657a69480f06c6d8d9652": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -22661,7 +22663,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "unknown-286-suntac-673731fc4fde2755204992.7z",
   "screens": 2,
-  "text": "270ed97a11ec975a"
+  "text": "1a5c7e8a1a2368fe"
  },
  "bb94fe468b304ee27cd9c9970e3c84946effe250adbe7ae0e0d75bceacbf9eba": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -25835,7 +25837,7 @@
   "bios": "AST's BIOS of the Premium 386SX with its CMOS SETUP UTILITY,",
   "name": "cupid-386sx-640b9de32f7ef083958261.zip",
   "screens": 3,
-  "text": "b480e61a6d6304cb"
+  "text": "3d7565acc4bc1ac3"
  },
  "d530cd86c080e40ac2e1f556ec2ab384a4829b900bdb7b0e01915320ab228000": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -28151,7 +28153,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "80286-286s-turbo-5ea348c3e188a072154675.zip",
   "screens": 2,
-  "text": "e5d707c6ddb6e77a"
+  "text": "3c96faabc41595f0"
  },
  "e85538be107b7fb28baf2e078d0ed863992b05436ddf5fb1e75ec02f4c1523e3": {
   "bios": "Intel's own desktop-board BIOS (AMI core 6.32, Intel's menu-",
@@ -29109,7 +29111,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "80286-award-bios-unknown-suntac-61cc8695b60ea623559328.zip",
   "screens": 2,
-  "text": "d415fd2c5abacef4"
+  "text": "080b3fa21f744375"
  },
  "f0528e8632c7648692652502c076c3bee5c271dc0766536896b09a59cb4e332d": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
