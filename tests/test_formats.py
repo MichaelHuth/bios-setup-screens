@@ -323,3 +323,44 @@ def test_award6_option_texts_skip_their_script_commands() -> None:
     bios._in_language = lambda word: True  # type: ignore[method-assign]
     assert bios._option_text(0x0000, 0) == b"CPU Default"
     assert bios._option_text(0x0000, 1) == b"1.50 V"
+
+
+def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
+    # an OEM menu bar's pages that no entry opens: entries as (label, page it opens)
+    pages = {
+        1: [("Date (mm:dd:yy)", 0), ("Time (hh:mm:ss)", 0)],
+        3: [("Virus Warning", 0)],
+        4: [("DRAM Timing", 0)],
+        5: [("Video Off Method", 0)],
+        8: [
+            ("First Boot Device", 0),
+            ("Advanced BIOS Features", 3),
+            ("Advanced Chipset Features", 4),
+        ],
+        13: [("Case Open Warning", 0), ("CPU Warning Temperature", 0), ("CPU FAN Speed", 0)],
+        21: [  # (a page of all items: Power Management Setup is not its name)
+            ("Advanced BIOS Features", 3),
+            ("Advanced Chipset Features", 4),
+            ("Power Management Setup", 5),
+            ("ACPI Function", 0),
+        ],
+    }
+    entries = {(page, i): entry for page, items in pages.items() for i, entry in enumerate(items)}
+    bios = object.__new__(award6_setup.Award6)
+    bios.items = {
+        page: [(i, (page, i)) for i in range(len(items))] for page, items in pages.items()
+    }
+    bios.pages_only = True
+    bar = ("Main", "Advanced", "Power", "Defaults", "Exit", "HW Monitor")
+    bios._bar_table = lambda: b"".join(n.encode().ljust(16, b"\0") for n in bar) + b"X"  # type: ignore[method-assign]
+    bios._label = lambda e: entries[e][0]  # type: ignore[method-assign]
+    bios._target = lambda e: entries[e][1]  # type: ignore[method-assign]
+    assert bios.page_titles() == {
+        1: "Main",
+        3: "Advanced BIOS Features",
+        4: "Advanced Chipset Features",
+        5: "Power Management Setup",
+        8: "Advanced",
+        13: "HW Monitor",
+        21: "Page 21",
+    }
