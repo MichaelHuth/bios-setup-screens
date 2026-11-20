@@ -361,7 +361,8 @@ def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
     }
     bios.pages_only = True
     bar = ("Main", "Advanced", "Power", "Defaults", "Exit", "HW Monitor")
-    bios._bar_table = lambda: b"".join(n.encode().ljust(16, b"\0") for n in bar) + b"X"  # type: ignore[method-assign]
+    table = b"".join(n.encode().ljust(16, b"\0") for n in bar) + b"X"
+    bios._bar_table = lambda: table  # type: ignore[method-assign]
     bios._label = lambda e: entries[e][0]  # type: ignore[method-assign]
     bios._target = lambda e: entries[e][1]  # type: ignore[method-assign]
     assert bios.page_titles() == {
@@ -390,7 +391,8 @@ def test_hiflex_direct_start_takes_posts_monitor_setup() -> None:
         runtime += b"\xb8" + struct.pack("<H", value) + call(len(runtime) + 3, reader)
     writes = hfjump_setup.monitor_writes(bytes(runtime), 0)
     assert writes == [(0x13, 0x70), (0x50, 0xFF), (0x0B, 0x1B)]
-    # POST, loaded at offset 100h: the index in AL, a table walked by mov si ; mov cx ; mov ax,cs:[si]
+    # POST, loaded at offset 100h: the index in AL, a table walked by mov si ; mov cx ;
+    # mov ax,cs:[si]
     post = bytearray(bytes.fromhex("5152ba9502ee4286c4ee5a59c3"))
     table = 40
     post += b"\xbe" + struct.pack("<H", 0x100 + table) + bytes.fromhex("b903002e8b04")
