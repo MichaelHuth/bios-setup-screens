@@ -8053,7 +8053,7 @@
   "bios": "Dell's Phoenix ROM BIOS PLUS 1.10 (about 2003-04, Dell's own",
   "name": "gx270a07-681297dfdc8ef854376340.exe.bin",
   "screens": 10,
-  "text": "6cc3bb411006118c"
+  "text": "7c80f57f12b73b64"
  },
  "432240b729019748773a5caa27f3b3ff239b465a94e50126fb5d297b795cf33f": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -13447,7 +13447,7 @@
   "bios": "AMIBIOS 7 with the tabbed AMIBIOS SETUP UTILITY (text mode),",
   "name": "p4i45d-r3-2.30)-5f80165313a54609471188.zip",
   "screens": 10,
-  "text": "de06101d7b106234"
+  "text": "55f11c5a2839de80"
  },
  "70888f931b35559c442002b0ec3caa6c3f05540c3f60e07775d4883634db70a7": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
@@ -13633,7 +13633,7 @@
   "bios": "Dell's Phoenix ROM BIOS PLUS 1.10 (about 2003-04, Dell's own",
   "name": "d3000a03-63232af10ee5b679911530.exe.bin",
   "screens": 10,
-  "text": "4e27b5e3b6a2b842"
+  "text": "722ad03dd510fe74"
  },
  "71f0eeaf6826c28bde9a06dc0e29afb04b7022e2607e8be721de309e3be6f26c": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -23289,7 +23289,7 @@
   "bios": "AMIBIOS 7 with the tabbed AMIBIOS SETUP UTILITY (text mode),",
   "name": "p4i45d-1.50)-5f8018ffae703582088285.zip",
   "screens": 10,
-  "text": "34c7c49cc6556ffa"
+  "text": "67ef148a89a7e08f"
  },
  "bfcef21579c76e4249cb7ca17ec2c5e2596d8350124c251bcd62353394876493": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
