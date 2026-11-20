@@ -207,7 +207,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "xa0723b-6603c4ce2c101299802851.zip",
   "screens": 8,
-  "text": "6bd596e1e74b5653"
+  "text": "900b44cb329a1ebc"
  },
  "021f9adc3dab11e81a24b6b106e7601e579eadaba71ac2ef733a560a0c5fac5f": {
   "bios": "Award 4.5x setup code in LHA module '2a5ifd49.BIN'",
@@ -541,7 +541,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "asus-p4p800-f-bios-62221c728c3cd665517733.zip",
   "screens": 10,
-  "text": "0a0955e4ee13f31c"
+  "text": "7ef0bc8faf6f0205"
  },
  "04f4b871aeabc5f11b30bfbdc1efb541fc4482a22681be48c674be1cacaa0f23": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -553,7 +553,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "pcdl1009-652c7344b75ce856733457.bin",
   "screens": 10,
-  "text": "ff4531c240f01148"
+  "text": "43d4ba9a646b151a"
  },
  "0525eb061e32252c75f805295679297f668f22a8cb2d2e5a2c0ad994772f76b5": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -565,7 +565,7 @@
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
   "name": "sp43099-67f689b387c11179515930.exe.bin",
   "screens": 10,
-  "text": "5b186485dd3aeddf"
+  "text": "bb7c1a8980867417"
  },
  "053ebad55add82e6c7fd6947931fbe8f25d11b6bc1750f2d3c3656091e223394": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -589,7 +589,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "k8xk106a-6737c0a79d979791447005.zip",
   "screens": 10,
-  "text": "028c799308cdb97d"
+  "text": "3ace1bdfe4fdaf49"
  },
  "055f766da747a20f76935e6609014193f3cfbd9ee442a6cb3e6db52089245753": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -667,7 +667,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "1010-001-630ddd0e938ce401347026.zip",
   "screens": 10,
-  "text": "d99e7c3891c3acdb"
+  "text": "7d64d8c8e599d555"
  },
  "05d79d5a01e8c533b864c8f003b7bee86b57ae2a11214de137668cf41ecb1456": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -1061,7 +1061,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "s85mir2-6406f260d1838412664694.zip",
   "screens": 10,
-  "text": "dff5ac02a9d6e74c"
+  "text": "5de44aaa7c58cb63"
  },
  "090a53bb0794e4dbb85616afeb2742f5a3c964c86f0c0edcff60bebe16e68d19": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -1909,7 +1909,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "51m2100-67e5897a1b9f3088627002.zip",
   "screens": 10,
-  "text": "939ced0fac7c6c36"
+  "text": "8ed4fd83c789ed61"
  },
  "1020b445c19563c642081b43e35e2a04f86b1c92e4743231d4dda57b9197af70": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -2727,7 +2727,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "45lv106-636bbc50200f5567270330.zip",
   "screens": 10,
-  "text": "dec4112c2c95a122"
+  "text": "fdf2b28fbbbffb7d"
  },
  "1707fcb4973cec6d0d6fa50eae39f88768e013016536e5850d3e9bb46faaa86b": {
   "name": "7507925-64fca97c84caa210585545.exe.bin",
@@ -2777,7 +2777,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "kx400106b-6368f54b4507a031433066.zip",
   "screens": 10,
-  "text": "3f980f02ac0d23bf"
+  "text": "7c8e01bc93ffb11b"
  },
  "175ba65a2b1d813bf9900b2056ec34bd28b402df5d6143140195aedc2491a0d2": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -4645,7 +4645,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "p4c2401.zip",
   "screens": 10,
-  "text": "5d3051f4c25f7e80"
+  "text": "83bd6a7a97660d0a"
  },
  "27259ed8588e0f20909abcb0159e67766ef07809a75f392393cd037f1a188c2b": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -5367,7 +5367,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "dmc521-010111-67f81d991d123188701502.exe.bin",
   "screens": 10,
-  "text": "9b28fb9082007ed4"
+  "text": "fe14a1f3cdf4a17a"
  },
  "2d9c230c552e93db0243a0d5030c67d76fdd009b6609a2ed0a20d69e2ba47573": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -5503,7 +5503,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "600p106a-6273f7f5a52e3041059962.zip",
   "screens": 10,
-  "text": "3fc21a33300acf40"
+  "text": "bdd2085076859a7d"
  },
  "2e826a7fb94661ef9bb213c829d47d362e72157dd0108307e27c53e0fe48d381": {
   "name": "lfbios-60d915f469763373952234.zip",
@@ -5841,7 +5841,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "spitfire104-698f8b2042c24875741581.exe.bin",
   "screens": 10,
-  "text": "09af17a7e2c50f95"
+  "text": "2761ff8cef19d84d"
  },
  "3155d0d47686abf243a26ec50fe1a5dc8950cc885d3ee906a8c5b80ed30b846a": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -7031,7 +7031,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "o740-227-6ab7cbe94190b089769130.exe.bin",
   "screens": 10,
-  "text": "5dcd9190d5586848"
+  "text": "c9aaace6164e123b"
  },
  "3a260c0a71b683beee9615010a46c6980a3b7f759731736c8bffdf4e167aefd2": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -7397,7 +7397,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "s85mr3r-640c93c868b92325180075.zip",
   "screens": 10,
-  "text": "75a0570317676635"
+  "text": "666a8c42b2d6b103"
  },
  "3d4e7d1b506de50afb3db8e0c63042891ba6cd4800a019defb9d45843a8dd35d": {
   "bios": "PhoenixBIOS 4.0, setup read from the image without running i",
@@ -7565,7 +7565,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "45pg110a-636ce01759a8d452850301.zip",
   "screens": 10,
-  "text": "4f748bb36ac2cfeb"
+  "text": "dbcfa6ac5cd334d6"
  },
  "3f32dd1bc658333e92a5b0459c1d7e6a37de772db92c0cdcdc3de4d34aeead79": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -8053,7 +8053,7 @@
   "bios": "Dell's Phoenix ROM BIOS PLUS 1.10 (about 2003-04, Dell's own",
   "name": "gx270a07-681297dfdc8ef854376340.exe.bin",
   "screens": 10,
-  "text": "7c80f57f12b73b64"
+  "text": "43937b524e0b0c36"
  },
  "432240b729019748773a5caa27f3b3ff239b465a94e50126fb5d297b795cf33f": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -8673,7 +8673,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "pm800104-636b7e878b469659784471.zip",
   "screens": 10,
-  "text": "696d82daa6269d92"
+  "text": "ef0bf0b60ed69a41"
  },
  "46f88899af4fc0751a1513ee76b3bf9386cabe73a9156e4654f74408d2c7dd8d": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -9599,7 +9599,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "031028s-627a39f883833284158783.rom",
   "screens": 9,
-  "text": "f80763105071be87"
+  "text": "047893e9605b051b"
  },
  "4f1b898fde50912bab21bc453207da68fa3ce1f278baa44417ddad1f4623d8a4": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -10167,7 +10167,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "6929870100-64dea3dc67c97820892346.exe.bin",
   "screens": 10,
-  "text": "e4b22e1cc2b575a0"
+  "text": "b1d1e6c928fca925"
  },
  "53fba9a89021d158de78db0f343cf52c5ad4a95a44a650fd09677754afa4efe6": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -11779,7 +11779,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "659-19.zip-5fe2f114cc8a3564161377.zip",
   "screens": 10,
-  "text": "52e45785bf140f8a"
+  "text": "ce2fef0b31c88fc7"
  },
  "6278ace63aa2d3109cdf545501d441c218920daba6f1d02c9fbcc2589653738b": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -11867,7 +11867,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s2dg2-648b341acdbbf399668106.zip",
   "screens": 8,
-  "text": "7a8e11c1cf9e9572"
+  "text": "ff5beac600dd51df"
  },
  "636ee172430237e57863b08990a2d68234c82049fa96d2d3c131e0fb41d2fef1": {
   "bios": "Award 4.5x setup code in file",
@@ -12529,7 +12529,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "networking-bios-ga-8ikxr-f6-6887e9616cd5d048201775.exe.bin",
   "screens": 10,
-  "text": "f049aa31a04de078"
+  "text": "51d380494278d489"
  },
  "68db2619f8a02049ccbd419f021342d1f8bdcbb6c3ccb3aa40a0b6416de5f9af": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -12635,7 +12635,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "pm266110-636a48535206f739678370.zip",
   "screens": 10,
-  "text": "3e5b354ea1cf5110"
+  "text": "3d085e7805e7730e"
  },
  "6995be5b150b29eab067bb03492b521701da43c7c02c01d15bf8731d945603bb": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -12999,7 +12999,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "p4pvm1018.zip",
   "screens": 10,
-  "text": "b598a881b9957d5a"
+  "text": "060ed43858aa857f"
  },
  "6cb9e241966087bc619cdf024c0eb7cf03b39d04867a427f05e3246cfb52322d": {
   "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
@@ -13117,7 +13117,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "65pv100-636d15ccdfa96863531172.zip",
   "screens": 10,
-  "text": "cfddf9160ea8986f"
+  "text": "515b1d480ac12984"
  },
  "6e0a5e3b444abcd787d7fb84cd5f9d861628b7bec50721305a4d5e2e28077fee": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -13229,7 +13229,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "400a105-6368eaa8a4bde950838645.zip",
   "screens": 10,
-  "text": "4646fb1a06ad204d"
+  "text": "d427c6cf406b6c3a"
  },
  "6f0989f6ec6e6c66b0788c52b3a88ef03c7100a39f2fd37ac08e22565e5742ab": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -13307,7 +13307,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "18ds101c-63696de1aa6f6983584952.zip",
   "screens": 10,
-  "text": "c212cd61c466cb5b"
+  "text": "3e6ca84ad5871d80"
  },
  "6fc1ccc5138c422b90a22c7afa234979bb3fd645febdd0df701e73b3f5a9bfa6": {
   "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
@@ -13447,7 +13447,7 @@
   "bios": "AMIBIOS 7 with the tabbed AMIBIOS SETUP UTILITY (text mode),",
   "name": "p4i45d-r3-2.30)-5f80165313a54609471188.zip",
   "screens": 10,
-  "text": "55f11c5a2839de80"
+  "text": "d5f88bf7cf2e2bed"
  },
  "70888f931b35559c442002b0ec3caa6c3f05540c3f60e07775d4883634db70a7": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
@@ -13633,7 +13633,7 @@
   "bios": "Dell's Phoenix ROM BIOS PLUS 1.10 (about 2003-04, Dell's own",
   "name": "d3000a03-63232af10ee5b679911530.exe.bin",
   "screens": 10,
-  "text": "722ad03dd510fe74"
+  "text": "dd92dbc03270d681"
  },
  "71f0eeaf6826c28bde9a06dc0e29afb04b7022e2607e8be721de309e3be6f26c": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -14030,10 +14030,10 @@
   "result": "unsupported"
  },
  "75544b74cd3d176e5ad0f91cad9131ec7dab7eb0239a00510c188beb7bbacc40": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6380v37-614214eaea03f136865951.zip",
-  "screens": 9,
-  "text": "9f739edaf8b03080"
+  "screens": 10,
+  "text": "33f755a0c126f7a1"
  },
  "75575749b0a58737b7f93f9657fb1c67b96181563755c8d23878a861ac3e5bd8": {
   "bios": "PhoenixBIOS 4.0, setup read from the image without running i",
@@ -14167,7 +14167,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "av49ps06-64de30366fc73783179978.zip",
   "screens": 9,
-  "text": "4fcc0e2860781bf3"
+  "text": "ce5c095706459c67"
  },
  "76bb57a102549ecf5bc913c15909fd88617c4cf4ec840c7fccd6bd84419b145b": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -15065,7 +15065,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "packard-bell-ixtreme-750-bios-1-0q-6a2d34375d4dd477572712.BIN",
   "screens": 10,
-  "text": "f12ab248577ec41b"
+  "text": "23e88246116d4603"
  },
  "7d4b093d45750832b22495293eaa804c215c568e3cdce870aa03d988d8645a39": {
   "bios": "UEFI firmware (AMI Aptio, EVGA), setup pages read from the i",
@@ -15141,7 +15141,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "nupro-852-190-646c052f4ec3a782867070.zip",
   "screens": 10,
-  "text": "408f059ba1ad3557"
+  "text": "ce5f7a9883a5d595"
  },
  "7df06d51bcdc0e34b73b7cb1fca1462b2667067e6caef897e5bcf670eab8311e": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15171,7 +15171,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "km517101-67a270bbcbcfe681280749.zip",
   "screens": 10,
-  "text": "5bc32e2dcd9d6561"
+  "text": "e46b7ba640a3b82e"
  },
  "7e192af8cf908601ad4008e77f0e7a86977481effa5fd277892910cd60e3fb86": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -15297,7 +15297,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "s85mir3l-l14-6406f39cd28ec937178569.zip",
   "screens": 10,
-  "text": "23433331b1bf15d9"
+  "text": "a689b7ec86cdb883"
  },
  "7f60c3cfb79fd003163bfe36e4ee712671fa589a1ad281ba20952545b7bd4007": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -16743,7 +16743,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "ga-m57sli-rh-698e31907b60a338422594.rom",
   "screens": 10,
-  "text": "9f4625c7c501732c"
+  "text": "0ef3fce3b14d87a3"
  },
  "8b2f389bf5071822a4d71978757047f60fd56497af2957a17423f88463aac04e": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -17199,7 +17199,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "2gu2241-629cf08fcf5b2379549886.zip",
   "screens": 8,
-  "text": "39dc2a17d0e30238"
+  "text": "576fb933bc7ec9f7"
  },
  "8f85da09abfca77940812677495c2ec41db4c994c3daa82ab15441d0761b45c8": {
   "name": "40509ph-67e9e0509ba35337067374.us",
@@ -18123,7 +18123,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "tdvia1420-66a556fb7a2f0699023126.zip",
   "screens": 10,
-  "text": "ea2986528e77b988"
+  "text": "b79c54f7c2aa5458"
  },
  "96820abf975dfdc22b312dfc0ab3de04f1697cb37d7fd12aa51f2dbda8ec41b7": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -18421,7 +18421,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "400t104a-6368edc8e1856393164959.zip",
   "screens": 10,
-  "text": "b8026a254211516d"
+  "text": "8de023d9ae3ab037"
  },
  "98f9e6aae217dea46226f41b2d396b428a0c0bc81175e359c1f350bee7b31ac3": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -18493,7 +18493,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "45pgv110-6274f7147849f016131309.zip",
   "screens": 10,
-  "text": "345400b4c6d3c9d6"
+  "text": "cfa98e8e031c87ed"
  },
  "99c1b6ff90e52c679d42141f03a8f7e1dc3e9126477e531182bf92734a349d80": {
   "bios": "Award 4.5x setup code in LHA module '2A59ITGE.BIN'",
@@ -19797,7 +19797,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "1007-005-674ce6410a67c951953952.zip",
   "screens": 10,
-  "text": "1ac0daf022451295"
+  "text": "6d0380d5ff3fce53"
  },
  "a41543c2d9c77643e8c5a6b21f695cc7a443fd5d1a16a4d4f1ba8e07b4ec0493": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -20145,7 +20145,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "k8n7100-6737b87328060055233380.zip",
   "screens": 10,
-  "text": "a97a21da3505665b"
+  "text": "1ab7b5bf04c5acae"
  },
  "a6c5905db7eef15710ef43179706c0eff03701d1d66549396284ab924515e70b": {
   "bios": "Award Medallion BIOS 6.0: items from the system BIOS, texts ",
@@ -21615,7 +21615,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "952-series-040906s-63545433625c1654446334.exe.bin",
   "screens": 9,
-  "text": "350438c08857e138"
+  "text": "716354d957e3ef72"
  },
  "b2e949c5feac18bd3c9d58541e4125616d7b171648ac2169c5f5fd806240ed9a": {
   "name": "MACH64CT.VBI",
@@ -22165,7 +22165,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "soltek-slm6100754r1l-biosd10-6416f66c9964a232560160.zip",
   "screens": 10,
-  "text": "90bf30339ecc2caa"
+  "text": "677e3ecb8d31702d"
  },
  "b7b2988ac7345945e19dc0aa9f5b5ccb41ce21b85daaa5e3c48fc89646f6edd5": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -22297,7 +22297,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "o740-123-6ab7ccb389976575083987.EXE.bin",
   "screens": 10,
-  "text": "aa29834bfe7861a2"
+  "text": "17f3b9c0e1c51310"
  },
  "b8d792c6d89242dccd782b2babdff29c51fe0c1afb0a5ef04d5d15feddf200bb": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -23265,7 +23265,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "p4vxasd2021101-6463bb6d82b8a555281964.exe.bin",
   "screens": 9,
-  "text": "e4beefbfdf8246c0"
+  "text": "d1a0147ba2ef9f02"
  },
  "bf919a674a6b24302a630db390728bce444d6764c6417a2898ebb1ce29992e84": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -23289,7 +23289,7 @@
   "bios": "AMIBIOS 7 with the tabbed AMIBIOS SETUP UTILITY (text mode),",
   "name": "p4i45d-1.50)-5f8018ffae703582088285.zip",
   "screens": 10,
-  "text": "67ef148a89a7e08f"
+  "text": "2b17d3c288eeaf83"
  },
  "bfcef21579c76e4249cb7ca17ec2c5e2596d8350124c251bcd62353394876493": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -23765,7 +23765,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "600p305-636907a59407d376412433.zip",
   "screens": 10,
-  "text": "e9f1f2ad61d68224"
+  "text": "cf1af6958d8cc536"
  },
  "c3a5b371c05db0afca98b1c57f9d096a50ca371105f4556e9f7ad6cb17ff8d3e": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -23837,7 +23837,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "8xv102c-636901107dbdc055332853.zip",
   "screens": 10,
-  "text": "dd5e72530c30d6c9"
+  "text": "44bef2e06d488ec1"
  },
  "c4657da1db0df461a4a8f0967e20fe99a43f90457f80a9eab547b9b820a5b4ac": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -23871,7 +23871,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "P4P81019.rom",
   "screens": 10,
-  "text": "da1cc15214ca99da"
+  "text": "233f1a403d23a384"
  },
  "c49e4455e4dbb4874998cabc63bb33b0934617569eb1ccab954963f6873906f9": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -24345,7 +24345,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "65p7105-636d20314e011701003043.zip",
   "screens": 10,
-  "text": "43d5840198244699"
+  "text": "592f973e76f55e02"
  },
  "c8dd19f85afe212d737fe27d9bbb9d17bebc1acfde63d067b6e9c9d3fbbb99a2": {
   "name": "5280-v101-623c8e219b430238407019.zip",
@@ -24415,7 +24415,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "b8afd12-62def77fb7577530136643.zip",
   "screens": 10,
-  "text": "f1719d032d529c9a"
+  "text": "ac0ec4f4f7af486e"
  },
  "c9527245b652657630de14a85c64eafb0394c244d42fcb785b72c95ac2087b51": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -25087,7 +25087,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "8xv301-63690381607f0978473487.zip",
   "screens": 10,
-  "text": "adb84fc912965bea"
+  "text": "0ade32820c21c28e"
  },
  "cf013cc60c96b45b07bb3fc2c87593b588e8fa59c87516ade7ea3c5915f0e6a1": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -25123,7 +25123,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "nuvia110-66a0085fa1e65905175354.zip",
   "screens": 10,
-  "text": "a36c30e0818749ea"
+  "text": "ee7d8f4098ec9ba7"
  },
  "cf5249c79a4d02a72b02de0a2e3b5d5572060e07104bda7a818f11e3c393d4cd": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -25623,7 +25623,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "65pe111a-636d09485e3f7962807563.zip",
   "screens": 10,
-  "text": "89fd8bc1328831fe"
+  "text": "673ec74176b59844"
  },
  "d324b86ac32136c287b3cd8f23398715ab5bb079d286894ae61405f9aa2f7375": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -25717,13 +25717,13 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "wi2pb12-649979dd5e9e1394799862.exe.bin",
   "screens": 10,
-  "text": "9b9402635975f1f1"
+  "text": "b6b23b7aae7b0388"
  },
  "d3d65244bd1bcdbe0362693834c5885cc3af7840ec10eda0ee112a0e1e7ebda8": {
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "18g108-6347c194aa900828956672.zip",
   "screens": 10,
-  "text": "70fe90b4f8888880"
+  "text": "10589ea5d50b982c"
  },
  "d3f018393131b2fa6e7cf9c0465bad81bf0fdd1a4ba829270c64fd65b0ce8efd": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -26499,7 +26499,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "p4m2a26s-6463a733e66c8153212679.exe.bin",
   "screens": 9,
-  "text": "acdc1bf010d3fab9"
+  "text": "361f48abd56e9712"
  },
  "dae5807cf30a3650d96a184498e31350644dcaba52ef9baa06903fbb5f47f58d": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -27451,7 +27451,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "85mir313-6405f73dbcca4504890604.zip",
   "screens": 10,
-  "text": "53eb27a71bfda359"
+  "text": "844c088e18e22545"
  },
  "e36ccd0d11ab01f29db6a3038fd8a680a4bda5dbfe9e057a80f4654ce75e1a09": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -27943,7 +27943,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "875pg103a-636d2344cdeb9520706036.zip",
   "screens": 10,
-  "text": "b15a9b1cb71b3c76"
+  "text": "f37776be4b387153"
  },
  "e6f0f48ca18f2afc1f2169a420956a55da873575dd690057395bc9eff98dbfd4": {
   "name": "pe2500-2500sc-bios-win-a07-64cd8c50e0b8c900170129.exe.bin",
@@ -28187,7 +28187,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "networking-bios-ga-3pxsl-f10-67b3d86e8a9ce840684556.zip",
   "screens": 10,
-  "text": "32d637f2f2e2f386"
+  "text": "83888fd959b43d96"
  },
  "e89f8418d0d372d19078dd88fce899117340a6587bb204e8f23513a1b2e2c311": {
   "name": "naraa-108-63fb61ca5cb91524062390.exe.bin",
@@ -28709,7 +28709,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "683108-636ce90f0b3f6841147517.zip",
   "screens": 10,
-  "text": "eec2e112810ffdc3"
+  "text": "571063e2b64ebe66"
  },
  "ed0e834e1ef1cafbbbd31aa0d82eed51d1a7d919c349eb944c885ab448c8df58": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -28761,7 +28761,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "k7s7ag-030113-626155c37cc1c138560190.exe.bin",
   "screens": 9,
-  "text": "26f9eb535eac4814"
+  "text": "525e993304dd6fce"
  },
  "ede5458e74a4011d7bae0e5fe1eee9b66e5bc4799bb4d3fb26dd9e824d1e4b63": {
   "bios": "Phoenix BIOS before 4.0 (PhoenixBIOS 1.x, Phoenix SETUP Util",
@@ -28785,7 +28785,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "1021-006-6286509fa3584147215848.zip",
   "screens": 10,
-  "text": "0a0955e4ee13f31c"
+  "text": "7ef0bc8faf6f0205"
  },
  "edf1d04f85bef8926fb4bc6c83e033778659274141d6b272003d8d99288b49d8": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -28961,7 +28961,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "mv43s009-64e0b269b742a570965141.zip",
   "screens": 9,
-  "text": "ba7af3434eec1dab"
+  "text": "95d786068d0c66bb"
  },
  "ef7d32039b8d007416280a9d1feaa9059d85517b2eaed682cea413c123799b52": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -29433,7 +29433,7 @@
   "bios": "AMIBIOS 8, captured by running the whole ROM in an x86 emula",
   "name": "1021-005-631a4655a38d2012977325.zip",
   "screens": 10,
-  "text": "0aeb3be4350d2166"
+  "text": "a1c1804636ddbfcd"
  },
  "f2dbea9ae8116fdd186db080ee4bfc886899cf964c2fe4c35e56ab0029aad70c": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -31029,7 +31029,7 @@
   "bios": "Phoenix-AwardBIOS 6.00PG with an OEM menu built by its code ",
   "name": "689108-6737bd28216da072859999.zip",
   "screens": 10,
-  "text": "b659860be3b47a00"
+  "text": "f1d89c7d6b3b44ed"
  },
  "ff86e8a6fff09033939117d4fdc208c411ad6e80e83448b1fb49d5de563610a7": {
   "bios": "Phoenix-AwardBIOS 6.00PG with the menu-bar setup: frame from",
