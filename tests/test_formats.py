@@ -12,6 +12,7 @@ import pytest
 
 import ami
 import award6_setup
+import award_emu_setup
 import award_setup
 import hfjump_setup
 import phoenix
@@ -324,6 +325,13 @@ def test_award6_option_texts_skip_their_script_commands() -> None:
     bios._in_language = lambda word: True  # type: ignore[method-assign]
     assert bios._option_text(0x0000, 0) == b"CPU Default"
     assert bios._option_text(0x0000, 1) == b"1.50 V"
+
+
+def test_early_award_version_is_found_with_a_small_or_capital_v() -> None:
+    for version in (b"v4.50", b"V3.03 NFS", b"Version V3.13c"):
+        rom = b"Award Software  286 Modular BIOS " + version + b" SETUP"
+        assert award_emu_setup.is_early_award(rom), version
+    assert not award_emu_setup.is_early_award(b"Award Modular BIOS V6.00PG")
 
 
 def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
