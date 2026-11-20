@@ -903,6 +903,11 @@ RDMSR_RATIO_PATCH = bytes.fromhex("66B8") + (15 << 22).to_bytes(4, "little") + b
 # wanted, else written to MSR 2Dh and the board reset (Intel D845WR's POST; the emulated CPU
 # never reports the new ratio): the compare becomes "cmp al,al"
 P4_RATIO_CMP = bytes.fromhex("66B92C0000000F3266C1E81838D874")
+# "mov ecx,2Ch / rdmsr" (EBC_FREQUENCY_ID) where the emulator plays a Northwood
+# (cpu_p4_signature): "mov eax,10000000h / cdq", ratio 16 at a 100 MHz bus (code 0), a
+# 1.6 GHz Pentium 4 (Dell's PLUS 1.10 multiplies the two for its clock line: 0 MHz)
+RDMSR_P4 = bytes.fromhex("66B92C0000000F32")
+RDMSR_P4_PATCH = bytes.fromhex("66B8") + (16 << 24).to_bytes(4, "little") + bytes.fromhex("6699")
 # "cmp byte es:[802Fh],1 / jne $-8": Intel's POST waits for its SMM handler (raised through the
 # local APIC, ICR delivery mode SMI) to set a flag; there is no SMM here, the wait is left out
 SMI_CX_WAIT = bytes.fromhex("F7D1E304F7D1EBF8")  # (see the software SMI in _out)
@@ -1255,6 +1260,10 @@ class BiosEmulator:
         # the least a channel-0 latch advances the count (see _out; NCR sets 0Ch)
         self.pit0_latch_floor = 0x25
         self.smi_ack_pending = False  # Dell's SMI waits to skip (DELL_SMI_WAIT)
+        # Dell's NVRAM through its SMM handler (set by dell_setup): B2h = 67h asks for the
+        # next byte, which the handler puts in B3h; it reads 00h, an empty NVRAM (the
+        # service tag, asset tag and their checksums)
+        self.dell_nvram = False
         self.ran_in_ram, self.flush_pending = False, False  # (see _out, port 80h)
         # SMRAM (see SMRAM_REGS): open, a change still to apply, and what the side not in
         # view holds (the video memory while SMRAM is open, else the SMRAM)
@@ -1432,6 +1441,10 @@ class BiosEmulator:
         self.scat_regs = bytearray(b"\xff" * 256)
         self.scat_regs[0x40], self.scat_regs[0x45], self.scat_regs[0x48] = 1, 0x37, 0xC0
         self.cr0_at_reset = 0  # (set by a driver whose POST checks it: chips_setup)
+        # the POST screen: the screen as it was when the program, started at the reset
+        # vector, took its first key (DEL, F1 at the error pause), as a person sees it
+        self.from_reset = False
+        self.post_screen: Screen | None = None
         self.fill_solid_font = False  # see screen() (set by winbios_setup)
         self.mylex_counter = False  # port 800h counts bytes (set by mylex_setup)
         self.protect_socket = False  # see _protect (set by mr_setup)
@@ -2840,6 +2853,8 @@ class BiosEmulator:
                     self.key_wanted, self.idle_looks = False, 0
                 if code < 0x80:
                     self._advance_ticks(9)  # about half a second passes between two keys
+            if byte < 0x80:
+                self._note_post_screen()
             self.hw_prev = self.hw_keys.pop(0)
             self.kbc_queue, self.irq_pending, self.kbc_aux = [self.hw_prev], True, False
         elif self.reply_grace > 0 and not self.irq_pending:
@@ -3074,6 +3089,7 @@ class BiosEmulator:
                 if not self.keys:
                     self.stopped_reason = "waiting for a key"
                     raise Stop()
+                self._note_post_screen()
                 uc.reg_write(UC_X86_REG_AX, self.keys.pop(0))
             elif ah in (0x01, 0x11):
                 self.key_polls += 1
@@ -3085,6 +3101,7 @@ class BiosEmulator:
                 elif self.key_polls < 3:
                     self._set_zf(True)
                 else:
+                    self._note_post_screen()
                     uc.reg_write(UC_X86_REG_AX, self.keys[0])
                     self._set_zf(False)
             elif ah in (0x02, 0x12):
@@ -4042,6 +4059,15 @@ class BiosEmulator:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)
         as on the board's own CPUs; the emulated CPU answers everything else."""
         leaf = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
+        if self.cpu_p4_signature and leaf == 2 and not self.cpu_amd:
+            # the Northwood's cache descriptors: 512 KB L2 (7Bh), 12K-uop trace cache
+            # (70h), no L3 (40h), 8 KB L1 data (66h), TLBs (5Bh, 50h)
+            for reg, value in zip(
+                (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
+                (0x665B5001, 0, 0, 0x007B7040),
+            ):
+                uc.reg_write(reg, value)
+            return 1
         if self.cpu_p4_signature and leaf == 1 and not self.cpu_amd:
             for reg, value in zip(
                 (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
@@ -4097,6 +4123,13 @@ class BiosEmulator:
             self.uc.mem_write(at, RDMSR_RATIO_PATCH)
             patched = True
             at = memory.find(RDMSR_RATIO, at + 1)
+        if self.cpu_p4_signature and not self.cpu_amd:
+            at = memory.find(RDMSR_P4)
+            while 0 <= at < self.msr_patch_end:
+                if not memory.startswith(P4_RATIO_CMP, at):  # (patched below)
+                    self.uc.mem_write(at, RDMSR_P4_PATCH)
+                    patched = True
+                at = memory.find(RDMSR_P4, at + 1)
         for pattern, offset, replacement in (
             (P4_RATIO_CMP, 12, b"\x38\xc0"),
             (SMI_FLAG_WAIT, 6, b"\x90\x90"),
@@ -4210,6 +4243,8 @@ class BiosEmulator:
                 raise Stop()
             self.reset_control = value & 0xFF
         elif port == 0xB2 or port == self._via_smi_port():
+            if self.dell_nvram and port == 0xB2 and value & 0xFF == 0x67:
+                self.apm_status = 0x00
             # APM control (or a VIA software SMI command, PM I/O 2Fh: TriGem Santa Fe, Wyse
             # Cx0): raises an SMI. There is no SMM here; a program that waits for the handler
             # with "jp $" (the handler clears PF in the saved flags) or "jne $" (it sets ZF:
@@ -4556,7 +4591,8 @@ class BiosEmulator:
         self, cs: int, ip: int, ss: int = 0x0030, sp: int = 0x0100, ds: int = 0x40, es: int = 0
     ) -> Screen:
         uc = self.uc
-        if (cs, ip) == (0xF000, 0xFFF0):
+        self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
+        if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
             vector = bytes(uc.mem_read(0xFFFF0, 5))
@@ -5054,6 +5090,13 @@ class BiosEmulator:
                 break
         for r, v in saved.items():
             uc.reg_write(r, v)
+
+    def _note_post_screen(self) -> None:
+        """Keep the screen as the POST screen, if this is the first key POST takes."""
+        if self.from_reset and self.post_screen is None:
+            screen = self.screen()
+            if screen.text().strip():
+                self.post_screen = screen
 
     def screen(self) -> Screen:
         if self.video_mode in PLANAR_MODES:

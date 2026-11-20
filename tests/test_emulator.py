@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import struct
 import time
+import types
 
 import pytest
 
 import bios_emu
+import screen_tools
 from minirom import CODE_AT, DS0, HALT, OUT, putc, rom, set_vector, store_al, text
+from textscreen import Screen
 
 
 def memory(emu: bios_emu.BiosEmulator, at: int, n: int = 1) -> bytes:
@@ -130,3 +133,89 @@ def test_halt_with_interrupts_off() -> None:
     emu = bios_emu.BiosEmulator(rom(text(b"OK") + HALT))
     screen = emu.run(0xF000, 0xFFF0)
     assert emu.stopped_reason == "halted" and screen.text().startswith("OK")
+
+
+WAIT_KEY = b"\xb4\x00\xcd\x16"  # mov ah,0 ; int 16h
+
+
+def test_the_post_screen_is_the_screen_at_the_first_key() -> None:
+    # POST counts memory and waits for a key; the key starts setup, which waits for more
+    emu = bios_emu.BiosEmulator(
+        rom(text(b"640K OK") + WAIT_KEY + text(b" SETUP") + WAIT_KEY + HALT)
+    )
+    emu.run(0xF000, 0xFFF0)
+    assert emu.post_screen is None  # (no key taken yet)
+    emu.keys.append(0x011B)
+    screen = emu.resume()
+    assert screen.text().startswith("640K OK SETUP")
+    assert emu.post_screen is not None
+    assert emu.post_screen.text() == "640K OK"
+    emu.keys.append(0x011B)  # (setup's own keys leave it)
+    emu.resume()
+    assert emu.post_screen.text() == "640K OK"
+
+
+def test_no_post_screen_where_the_program_did_not_start_at_the_reset_vector() -> None:
+    # (a setup entered directly, as the classic AMIBIOS route does, has no POST screen)
+    emu = bios_emu.BiosEmulator(rom(text(b"SETUP") + WAIT_KEY + HALT))
+    emu.run(0xF000, 0xE000)
+    emu.keys.append(0x011B)
+    emu.resume()
+    assert emu.post_screen is None
+
+
+def test_dells_nvram_reads_empty_through_its_smi_port() -> None:
+    # out B3h,01h (a scratch byte) ; out B2h,67h (Dell's SMI: next NVRAM byte) ; in al,B3h
+    code = DS0 + b"\xb0\x01\xe6\xb3\xb0\x67\xe6\xb2\xe4\xb3" + store_al(OUT) + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\x01"  # (any other board: the scratch byte)
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.dell_nvram = True
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\x00"
+
+
+def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
+    # mov eax,2 ; cpuid ; mov [OUT],eax ; mov [OUT+4],edx ; mov ecx,2Ch ; rdmsr (patched)
+    code = (
+        DS0
+        + b"\x66\xb8\x02\x00\x00\x00\x0f\xa2"
+        + b"\x66\xa3"
+        + struct.pack("<H", OUT)
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT + 4)
+        + bios_emu.RDMSR_P4
+        + b"\x66\xa3"
+        + struct.pack("<H", OUT + 8)
+        + HALT
+    )
+    emu = bios_emu.BiosEmulator(rom(code), host_id=0x1A30)  # (a Pentium 4 host)
+    emu.msr_patch_end = 0x100000  # (patched in the ROM too, as POST would find it)
+    emu.post_codes_seen.update(range(3))
+    assert emu._patch_msr_reads()
+    emu.run(0xF000, 0xFFF0)
+    eax, edx, ratio = struct.unpack("<3I", memory(emu, OUT, 12))
+    assert (eax, edx) == (0x665B5001, 0x007B7040)  # (7Bh: 512 KB L2)
+    assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
+
+
+def test_the_post_screen_goes_with_the_setup_screens() -> None:
+    def screen(s: bytes) -> Screen:
+        out = Screen()
+        out.write(0, 0, s, 0x07)
+        return out
+
+    class Setup:  # (a setup route's object: its emulator and its screens)
+        def __init__(self, post: bytes | None) -> None:
+            self.emu = types.SimpleNamespace(post_screen=post and screen(post))
+
+        def screens(self) -> list:
+            return [("MAIN", screen(b"MAIN MENU"), "")]
+
+    screens = screen_tools._with_post(Setup(b"640K OK"))
+    assert [t for t, _, _ in screens] == ["MAIN"]
+    assert screens.post is not None and screens.post.text() == "640K OK"
+    assert screen_tools._with_post(Setup(None)).post is None
+    # (a "POST screen" that is the setup itself, taken at setup's first key, is none)
+    assert screen_tools._with_post(Setup(b"MAIN MENU")).post is None

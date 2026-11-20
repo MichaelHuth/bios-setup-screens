@@ -94,6 +94,8 @@ class AmiEasySetup:
             again = retry.run(0xF000, 0xFFF0)
             if "EASY SETUP" in again.text():
                 emu, screen = retry, again
+                # (DEL went in with POST's first line on the screen: no POST screen)
+                emu.post_screen = None
         if "EASY SETUP" not in screen.text():
             raise ValueError(f"AMIBIOS Easy Setup did not start (stopped: {emu.stopped_reason})")
         emu.max_instructions = 50_000_000

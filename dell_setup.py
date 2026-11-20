@@ -112,6 +112,11 @@ class DellSetup:
             ram_mb=64,
         )
         emu.kbc_reset_in_place = True  # (the shutdown test resets the CPU)
+        emu.dell_nvram = True  # (the service and asset tags: empty)
+        # a Pentium 4 board looks the processor up by its signature and its L2 cache by
+        # CPUID 2: a Northwood (Unicorn's own: "Intel Unknown Processor", "unknown")
+        if emu.cpu_brand is not None and "Pentium(R) 4" in emu.cpu_brand:
+            emu.cpu_p4_signature = emu.msr_patches = True
         emu.io_reads = {0xC50: 0x00}  # the chipset heat sink is fitted (OptiPlex GX270)
         emu.max_seconds = 150
         screen = emu.run(0xF000, 0xFFF0)

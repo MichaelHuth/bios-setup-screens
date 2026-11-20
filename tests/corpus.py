@@ -28,7 +28,7 @@ ROOT = HERE.parent
 MANIFEST = HERE / "corpus_manifest.json"
 SKIP = (".png", ".jpg", ".json", ".py", ".txt", ".md", ".log", ".tsv")
 CLOCK = re.compile(r"\d\d:\d\d:\d\d|\d\d/\d\d/\d{2,4}")
-MEASURED = re.compile(r"(?i)mhz|ratio|speed")  # (lines with values timed by the host's clock)
+MEASURED = re.compile(r"(?i)[mg]hz|ratio|speed")  # (lines with values timed by the host's clock)
 FILE_SECONDS = 1200
 
 

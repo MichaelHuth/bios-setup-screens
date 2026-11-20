@@ -11,6 +11,7 @@ import struct
 import pytest
 
 import ami
+import award6_setup
 import award_setup
 import phoenix
 import phoenix_tc_setup as tc
@@ -302,3 +303,23 @@ def test_a_setting_repeated_under_conditions_is_shown_once() -> None:
     (form_set,) = uefi_setup._parse_ifr(pkg)
     _, items = form_set.forms[1]
     assert [(i["prompt"], i["qid"]) for i in items] == [(5, 10), (7, 20), (7, 21)]
+
+
+def test_award6_option_texts_skip_their_script_commands() -> None:
+    # MSI's Cell Menu voltages call native code around the value (10h = native, 2
+    # argument bytes, which may be 01h, the byte that also ends an entry)
+    lang = bytearray(0x200)
+    struct.pack_into("<HH", lang, 0x10, 1, 0x20)  # one section, its table at 20h
+    struct.pack_into("<HH", lang, 0x20, 1, 0x40)  # one text, at 40h
+    entries = b"\x10\xe5\x12\x10\x01\x13CPU Default\x10\xee\x12\x00" + b"1.50 V\x00"
+    lang[0x40 : 0x40 + len(entries)] = entries
+    bios = object.__new__(award6_setup.Award6)
+    bios.lang = bytes(lang)
+    interp = award_setup.Interpreter(b"", 0, None, [])  # type: ignore[arg-type]
+    interp.lang = bios.lang
+    interp.ops = {0x10: ("native", 2, -1)}
+    interp.last_char = 0x15
+    bios._interp = lambda screen, ext: interp  # type: ignore[method-assign]
+    bios._in_language = lambda word: True  # type: ignore[method-assign]
+    assert bios._option_text(0x0000, 0) == b"CPU Default"
+    assert bios._option_text(0x0000, 1) == b"1.50 V"

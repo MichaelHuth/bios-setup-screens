@@ -47,6 +47,7 @@ import hfjump_setup
 import ami_setup
 import award6_setup
 import award_emu_setup
+import award_post
 import award_medallion_setup
 import award_menubar_setup
 import award_setup
@@ -131,7 +132,8 @@ TOOLS = [
                 },
                 "pages": {
                     "type": "string",
-                    "description": "'all' (default), 'main', or page numbers like '1,3' from the "
+                    "description": "'all' (default), 'main', 'post' (the POST screen, where POST "
+                    "ran in the emulator), or page numbers like '1,3' from the "
                     "list this tool returns.",
                 },
                 "defaults": {
@@ -249,7 +251,7 @@ _rendered: contextvars.ContextVar[list[tuple[str, Path]]] = contextvars.ContextV
 _style: contextvars.ContextVar[str] = contextvars.ContextVar("_style", default="")
 
 
-def _save(path: Path, title: str, screen: Screen | Image.Image) -> None:
+def _save(path: Path, title: str, screen: Screen | Image.Image, first: bool = False) -> None:
     try:
         rendered = _rendered.get()
     except LookupError:  # (outside a bios_setup_screens call)
@@ -266,7 +268,10 @@ def _save(path: Path, title: str, screen: Screen | Image.Image) -> None:
         screen.render(out)
     else:  # (a picture drawn in the setup's own graphical look)
         out = contact_sheet.save_compact(screen, out)
-    rendered.append((title, out))
+    if first:  # (the POST screen, added after the setup's pages: it comes first)
+        rendered.insert(0, (title, out))
+    else:
+        rendered.append((title, out))
 
 
 def _attach_screens(result: dict, rendered: list[tuple[str, Path]]) -> None:
@@ -278,7 +283,9 @@ def _attach_screens(result: dict, rendered: list[tuple[str, Path]]) -> None:
         return
     for _, out in rendered:
         workspace.bundle(out)
-    texts = {t for t, _ in rendered[:MAX_TEXT]}
+    # (the POST screen first costs no page its text)
+    shown_text = MAX_TEXT + rendered[0][0].startswith(POST_TITLE)
+    texts = {t for t, _ in rendered[:shown_text]}
     result["screens"] = {t: s for t, s in result.get("screens", {}).items() if t in texts}
     zip_note = (
         f"one ZIP file with all {len(rendered)} screen images at full size and your "
@@ -314,9 +321,9 @@ def _attach_screens(result: dict, rendered: list[tuple[str, Path]]) -> None:
             else ""
         )
         + (
-            f". The text of screens {MAX_TEXT + 1} on is not shown here (ask for them "
+            f". The text of screens {shown_text + 1} on is not shown here (ask for them "
             "with pages to read them)"
-            if len(rendered) > MAX_TEXT
+            if len(rendered) > shown_text
             else ""
         )
     )
@@ -1693,24 +1700,42 @@ def _setup_screens(
     raw = _unzipped(archive)
     award6_failure = None  # why an image with an awardext module was not read as 6.00PG
     try:  # Award 6.00PG full flash image (system BIOS + awardext module)
-        return _award6_screens(path, award6_setup.Award6(raw), pages, defaults)
+        return _award_post(
+            _award6_screens(path, award6_setup.Award6(raw), pages, defaults), path, raw, pages
+        )
     except ValueError as award6_error:
         if any(m["name"].lower().startswith("awardext") for m in lzh.find_modules(raw)):
             try:
-                return _menubar_screens(
-                    path, award_menubar_setup.AwardMenuBar(raw), pages, defaults
+                return _award_post(
+                    _menubar_screens(path, award_menubar_setup.AwardMenuBar(raw), pages, defaults),
+                    path,
+                    raw,
+                    pages,
                 )
             except ValueError as menubar_error:  # (4.51PG images have awardext too)
                 try:  # OEM setups whose main menu is code (Soltek, HP): the item pages
                     if lzh.find_modules(raw, limit=1) and language_module_present(raw):
-                        return _award6_pages_screens(
-                            path, award6_setup.Award6(raw, pages_only=True), pages, defaults
+                        return _award_post(
+                            _award6_pages_screens(
+                                path,
+                                award6_setup.Award6(raw, pages_only=True),
+                                pages,
+                                defaults,
+                            ),
+                            path,
+                            raw,
+                            pages,
                         )
                 except ValueError:
                     pass
                 try:  # OEM 6.00PG setups without a page frame script (Maxdata, IBM's USI)
-                    return _award6_screens(
-                        path, award6_setup.Award6(raw, drawn_frames=True), pages, defaults
+                    return _award_post(
+                        _award6_screens(
+                            path, award6_setup.Award6(raw, drawn_frames=True), pages, defaults
+                        ),
+                        path,
+                        raw,
+                        pages,
                     )
                 except ValueError:
                     pass
@@ -1732,7 +1757,7 @@ def _setup_screens(
         except ValueError:
             bios = None
         if bios is not None:
-            return _medallion_screens(path, bios, pages, defaults)
+            return _award_post(_medallion_screens(path, bios, pages, defaults), path, raw, pages)
     if winbios_setup.is_winbios(raw):
         return _winbios_screens(path, raw, pages, defaults, color)
     if mr_setup.is_mr_bios(raw):
@@ -1879,7 +1904,7 @@ def _setup_screens(
                 "texts."
             ) from award_error
         return _ami_screens(path, raw, pages, defaults, color)
-    return _award_screens(path, data, source, pages, defaults, raw)
+    return _award_post(_award_screens(path, data, source, pages, defaults, raw), path, raw, pages)
 
 
 # BIOS families recognised but not supported by bios_setup_screens (yet): (marker, description)
@@ -2208,8 +2233,60 @@ def _cached_screens(rom: bytes, capture: Callable[[], list]) -> list:
     return _EMULATED_SCREENS[key]
 
 
+class _Screens(list):
+    """A setup's screens, with the POST screen if the emulator ran POST before setup."""
+
+    post: Screen | None = None
+
+
+def _with_post(bios: Any) -> _Screens:
+    """bios.screens(), and the screen POST showed when it took its first key (DEL, F1 at
+    the error pause), where the emulator ran POST to get to setup."""
+    post = getattr(getattr(bios, "emu", None), "post_screen", None)
+    screens = _Screens(bios.screens())
+    if post is not None and all(post.text() != s.text() for _, s, _ in screens):
+        screens.post = post
+    return screens
+
+
+POST_TITLE = "POST screen"
+
+
+def _add_post(
+    result: dict, path: Path, post: Screen | None, wanted: str, rebuilt: str = ""
+) -> None:
+    """The POST screen first, as page "post": with all pages or when asked for. rebuilt:
+    its text, where the screen is rebuilt from the ROM's texts instead of captured."""
+    if post is None:
+        return
+    title = POST_TITLE + (" (rebuilt)" if rebuilt else "")
+    result["pages"] = {"post": title, **result["pages"]}
+    if wanted == "all" or "post" in wanted.replace(" ", "").split(","):
+        _save(path, title, post, first=True)
+        result["screens"] = {title: rebuilt or post.text(), **result["screens"]}
+        result["post"] = (
+            "The POST screen is rebuilt, not captured: POST does not run for this "
+            "route. Its texts are the ROM's own (banner, board message, BIOS ID, "
+            "the memory test and setup key lines, the Energy Star logo), placed as "
+            "Award's POST shows them; the memory size is only an example and the CPU "
+            "line is left out."
+            if rebuilt
+            else "The POST screen is what the ROM drew in the emulator before setup, at "
+            "the moment it took the setup key: the CPU, memory size and drives are "
+            "the emulated PC's, and CMOS errors appear because the CMOS was empty."
+        )
+
+
+def _award_post(result: dict, path: Path, image: bytes, pages: str | None) -> dict:
+    """An Award route's result, with the POST screen rebuilt from the ROM's texts."""
+    post = award_post.post_screen(image)
+    if post is not None:
+        _add_post(result, path, post[0], (pages or "all").strip().lower(), post[1])
+    return result
+
+
 def _tc_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: phoenix_tc_setup.TrustedCoreSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(phoenix_tc_setup.TrustedCoreSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Phoenix TrustedCore/SecureCore (about 2006-10), setup read from the image "
@@ -2283,7 +2360,7 @@ def _phoenix_screens(path: Path, rom: bytes, pages: str | None) -> dict:
         except ValueError:
             pass
     try:
-        screens = _cached_screens(rom, lambda: phoenix_setup.PhoenixSetup(rom).screens())
+        screens = _cached_screens(rom, lambda: _with_post(phoenix_setup.PhoenixSetup(rom)))
     except ValueError as e:
         if b"BCPFFV" not in rom:
             raise
@@ -2310,7 +2387,7 @@ def _phoenix_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _mylex_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: mylex_setup.MylexSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(mylex_setup.MylexSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Mylex BIOS with its CMOS Setup, captured by running the whole ROM in an "
@@ -2324,7 +2401,7 @@ def _mylex_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _dtk_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: dtk_setup.DtkSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(dtk_setup.DtkSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "DTK (Datatech) BIOS with its ROM SETUP PROGRAM, captured by running the "
@@ -2341,7 +2418,7 @@ def _dtk_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _ami_qa_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ami_qa_setup.AmiQaSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami_qa_setup.AmiQaSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMI 286 BIOS of about 1988 with built-in diagnostics and its question-and-"
@@ -2357,7 +2434,7 @@ def _ami_qa_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _quadtel_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: quadtel_setup.QuadtelSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(quadtel_setup.QuadtelSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Quadtel BIOS with its System SETUP, captured by running the whole ROM in "
@@ -2374,7 +2451,7 @@ def _quadtel_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _intelexp_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: intelexp_setup.IntelExpressSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(intelexp_setup.IntelExpressSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Intel's Express BIOS of 1995-97 (AMIBIOS core, menu-bar setup), rebuilt from "
@@ -2391,7 +2468,7 @@ def _intelexp_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _acer_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: acer_setup.AcerSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(acer_setup.AcerSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Acer BIOS with its BIOS Utility, captured by running the whole ROM in an "
@@ -2409,7 +2486,7 @@ def _acer_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _tandon_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: tandon_setup.TandonSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(tandon_setup.TandonSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Tandon's own BIOS with its SYSTEM SETUP, captured by running the whole ROM in an "
@@ -2423,7 +2500,7 @@ def _tandon_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _novell_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: novell_setup.NovellSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(novell_setup.NovellSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "The BIOS of Novell's ATterminal with its ROM SETUP, captured by running the whole "
@@ -2438,7 +2515,7 @@ def _novell_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _texas_micro_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: texasmicro_setup.TexasMicroSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(texasmicro_setup.TexasMicroSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Texas Micro's BIOS with its Setup Utility (a block of its own at E0000), captured by "
@@ -2453,7 +2530,7 @@ def _texas_micro_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _prompt_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: prompt_setup.PromptSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(prompt_setup.PromptSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     found = prompt_setup.family(rom)
     result["bios"] = (
@@ -2468,7 +2545,7 @@ def _prompt_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _chips_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: chips_setup.ChipsSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(chips_setup.ChipsSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Chips and Technologies' own BIOS for its SCAT chipset (F82C235, 286 boards) with "
@@ -2484,7 +2561,7 @@ def _chips_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _ncr_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ncr_setup.NcrSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ncr_setup.NcrSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "NCR's version of IBM's AT ROM BIOS (NCR 3230, 1992-97) with its built-in "
@@ -2501,7 +2578,7 @@ def _ncr_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _dell_paged_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: dell_setup.DellPagedSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(dell_setup.DellPagedSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Dell's Phoenix ROM BIOS PLUS 1.10 (about 1997, Dell's own text-mode System Setup "
@@ -2516,7 +2593,7 @@ def _dell_paged_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _dell_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: dell_setup.DellSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(dell_setup.DellSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Dell's Phoenix ROM BIOS PLUS 1.10 (about 2003-04, Dell's own text-mode System "
@@ -2533,7 +2610,7 @@ def _dell_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _phoenix_text_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: phoenix_setup.PhoenixTextSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(phoenix_setup.PhoenixTextSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captured by running "
@@ -2550,7 +2627,7 @@ def _phoenix_text_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _easy_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ami_easy_setup.AmiEasySetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami_easy_setup.AmiEasySetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS with the Easy Setup (text mode, menu bar), captured by running the "
@@ -2566,7 +2643,7 @@ def _easy_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _hiflex_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ami_hiflex_setup.AmiHiFlex(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami_hiflex_setup.AmiHiFlex(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by running the "
@@ -2582,7 +2659,7 @@ def _hiflex_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _hiflex_direct_screens(path: Path, rom: bytes, pages: str | None, why: Exception) -> dict:
-    screens = _cached_screens(rom, lambda: hfjump_setup.Direct(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(hfjump_setup.Direct(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS with the Simple/Hi-Flex text-mode setup, started directly in an x86 "
@@ -2600,7 +2677,7 @@ def _hiflex_direct_screens(path: Path, rom: bytes, pages: str | None, why: Excep
 
 
 def _award_emu_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: award_emu_setup.AwardEmu(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(award_emu_setup.AwardEmu(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "early Award Modular BIOS (v3.x-4.50, before the screen scripts), captured "
@@ -2619,7 +2696,7 @@ def _award_emu_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _phoenix_old_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: phoenix_old_setup.PhoenixOld(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(phoenix_old_setup.PhoenixOld(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Phoenix BIOS before 4.0 (PhoenixBIOS 1.x, Phoenix SETUP Utility), captured "
@@ -2636,7 +2713,7 @@ def _phoenix_old_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _ami7_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ami7_setup.AmiBios7(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami7_setup.AmiBios7(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS 7 with AMI's new setup utility, captured by running the whole ROM "
@@ -2663,7 +2740,7 @@ def _ami7_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _intel_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: intel_setup.IntelSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(intel_setup.IntelSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Intel's own desktop-board BIOS (AMI core, Intel's menu-bar setup), "
@@ -2682,7 +2759,7 @@ def _intel_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _intel_static_screens(path: Path, rom: bytes, pages: str | None, why: Exception) -> dict:
-    screens = _cached_screens(rom, lambda: intel_static_setup.IntelStatic(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(intel_static_setup.IntelStatic(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "Intel's own desktop-board BIOS (AMI core 6.32, Intel's menu-bar setup), "
@@ -2711,7 +2788,7 @@ def _intel_host(rom: bytes) -> bool:
 
 
 def _ami8_screens(path: Path, rom: bytes, pages: str | None) -> dict:
-    screens = _cached_screens(rom, lambda: ami8_setup.AmiBios8(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami8_setup.AmiBios8(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS 8, captured by running the whole ROM in an x86 emulator (chipset "
@@ -2802,7 +2879,7 @@ def _uefi_screens(path: Path, rom: bytes, pages: str | None) -> dict:
                 "Sapphire's setup pictures, so its setup "
                 "can only be drawn as text pages"
             )
-    screens = _cached_screens(rom, lambda: uefi_setup.UefiSetup(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(uefi_setup.UefiSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "UEFI firmware (AMI Aptio and others), setup pages read from the image "
@@ -2822,7 +2899,7 @@ def _uefi_screens(path: Path, rom: bytes, pages: str | None) -> dict:
 
 
 def _itk_screens(path: Path, part: bytes, pages: str | None, why: Exception) -> dict:
-    screens = _cached_screens(part, lambda: intel_itk.ItkSetup(part).screens())
+    screens = _cached_screens(part, lambda: _with_post(intel_itk.ItkSetup(part)))
     result = _mr_screens(path, part, pages, screens)
     result["bios"] = (
         "Intel desktop-board EFI firmware (about 2006-2013), setup pages read from the "
@@ -2869,7 +2946,7 @@ def _gui_screens(
 
 
 def _ami8_static_screens(path: Path, rom: bytes, pages: str | None, why: Exception) -> dict:
-    screens = _cached_screens(rom, lambda: ami8_static_setup.AmiBios8Static(rom).screens())
+    screens = _cached_screens(rom, lambda: _with_post(ami8_static_setup.AmiBios8Static(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
         "AMIBIOS 8, setup pages read from the ROM without running it (page scripts "
@@ -2888,7 +2965,7 @@ def _ami8_static_screens(path: Path, rom: bytes, pages: str | None, why: Excepti
 
 def _mr_screens(path: Path, rom: bytes, pages: str | None, screens: list | None = None) -> dict:
     if screens is None:
-        screens = _cached_screens(rom, lambda: mr_setup.MrBios(rom).screens())
+        screens = _cached_screens(rom, lambda: _with_post(mr_setup.MrBios(rom)))
     titles = [t for t, _, _ in screens]
     wanted = (pages or "all").strip().lower()
     if wanted in ("all", "main"):
@@ -2905,6 +2982,7 @@ def _mr_screens(path: Path, rom: bytes, pages: str | None, screens: list | None 
         "the emulator, not the real board. Images are attached.",
         "screens": {},
     }
+    _add_post(result, path, getattr(screens, "post", None), wanted)
     for i, (title, screen, _reason) in enumerate(screens, start=1):
         if i not in chosen:
             continue
@@ -2917,6 +2995,7 @@ def _winbios_screens(path: Path, rom: bytes, pages: str | None, defaults: str, c
     bios = winbios_setup.WinBios(rom)
     defaults = defaults or "setup"
     color = int(color or 0) % len(winbios_setup.COLOR_SETS)
+    post = bios.emu.post_screen  # (taken before setup's own keys)
     screens = bios.screens(defaults, color)
     titles = [t for t, _, _ in screens[1:]]
     chosen = _chosen_pages(pages, len(titles))
@@ -2944,6 +3023,8 @@ def _winbios_screens(path: Path, rom: bytes, pages: str | None, defaults: str, c
         "screens": {},
     }
     warnings = []
+    if post is not None and all(post.text() != s.text() for _, s, _ in screens):
+        _add_post(result, path, post, (pages or "all").strip().lower())
     for i, (title, screen, reason) in enumerate(screens):
         if (i == 0 and "main" not in chosen) or (i > 0 and i not in chosen):
             continue
