@@ -78,12 +78,18 @@ def test_the_timer_counts_down() -> None:
     assert 0 < second < first <= 0xFFFF
 
 
-def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine() -> None:
+@pytest.mark.parametrize("masked_before", [False, True])
+def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine(
+    masked_before: bool,
+) -> None:
     # Award's 286 POST counts refresh cycles (port 61h bit 4) between two timer interrupts
-    # and shows "REFRESH TIMING ERROR" outside about 1370-2290
+    # and shows "REFRESH TIMING ERROR" outside about 1370-2290. masked_before: IRQ 0 masked
+    # while port 61h is read a million times; the tick raised then comes on the unmask
     poll = b"\xe4\x61\xa8\x10\x75\xfa"  # in al,61h ; test al,10h ; jnz (to the in)
     poll += b"\xe4\x61\xa8\x10\x74\xfa\x42\xeb\xf1"  # the same with jz ; inc dx ; jmp (first in)
     start = DS0 + b"\xb0\x36\xe6\x43\xb0\x00\xe6\x40\xe6\x40"  # channel 0, mode 3, count 0
+    if masked_before:  # mask all ; sti ; bx = 8 times cx = 65536 times in al,61h
+        start += b"\xb0\xff\xe6\x21\xfb\xbb\x08\x00\x31\xc9\xe4\x61\xe2\xfc\x4b\x75\xf7"
     first = CODE_AT + len(start) + 12 + 7  # (after the vector, the mask and sti ; jmp $)
     start += set_vector(8, first) + b"\xb0\xfe\xe6\x21\xfb\xeb\xfe"  # IRQ 0 only ; sti ; jmp $
     count = b"\x31\xd2\x83\xc4\x06\xb0\x20\xe6\x20\xfb" + poll  # dx = 0 ; drop the frame ; EOI

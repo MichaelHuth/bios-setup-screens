@@ -4958,7 +4958,9 @@ class BiosEmulator:
         uc.reg_write(UC_X86_REG_EIP, ip)  # the interrupt returns to this instruction
         if self._deliver(uc, vector):
             if vector == 8:
-                self.irq0_pending = False
+                # (counted from here too: an IRQ 0 raised while masked comes when unmasked,
+                # and the next tick is a whole tick later, not at once)
+                self.irq0_pending, self.refresh_toggles = False, 0
             elif vector == 0x0E:
                 self.fdc_pending = False
             else:
