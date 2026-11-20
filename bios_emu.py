@@ -202,9 +202,11 @@ HWMON_ITE = {0x25: 0x3D, 0x26: 0xEE, 0x27: 0xBA, 0x28: 0xBC, 0x29: 0x26, 0x2A: 0
 # 5Dh, kept with their power-on values); all ones read as stopped fans (0 RPM)
 FAN_RPM = (4500, 3000, 2700)
 # The layout is chosen by the first register the BIOS selects that only one of the two has
-# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later)
+# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later).
+# 40h is the configuration register (start bit) of Winbond's and the LM78's layout, ITE's is
+# 00h (PCChips 598, 2k0308s: 40h = 00h, 01h, then the fan at 29h)
 HWMON_ITE_ONLY = frozenset((0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x13, 0x14, 0x15, 0x16, 0x17))
-HWMON_WINBOND_ONLY = frozenset((0x47, 0x4E, 0x4F))
+HWMON_WINBOND_ONLY = frozenset((0x40, 0x47, 0x4E, 0x4F))
 HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
 # VT82C686A's own hardware monitor (function 4: I/O base at 70h, decoded with 74h bit 0), in
 # the scales of the Linux via686a driver: temperatures 38, 32 and 45 C at 20h, 21h and 1Fh (the

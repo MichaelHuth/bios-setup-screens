@@ -200,6 +200,15 @@ def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
     assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
 
 
+def test_the_lm78_start_bit_chooses_the_winbond_layout() -> None:
+    # 40h = 01h starts an LM78/Winbond monitor (ITE's configuration is 00h): 29h is fan 2,
+    # 3000 RPM with the power-on divisor 2
+    code = DS0 + hwmon_write(0x40, 0x01) + hwmon_read(0x29, OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((225,)) and emu.hwmon_winbond is True
+
+
 def test_an_ite_monitor_answers_at_the_base_of_its_logical_device_4() -> None:
     def sio(index: int, value: int) -> bytes:
         # mov al,index ; out 2Eh,al ; mov al,value ; out 2Fh,al
