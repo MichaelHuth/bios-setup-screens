@@ -803,7 +803,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s75r13i-64ec581427168928555335.zip",
   "screens": 9,
-  "text": "0e37deb2bbdf50e3"
+  "text": "7763af53de22b42f"
  },
  "06d8af84d78755281de9588491fa0688ef6604c6a86bc43a02ff86d89ecad4aa": {
   "bios": "Award 4.5x setup code in LHA module 'stn.bin'",
@@ -910,8 +910,8 @@
  "07bae04fa12736e8eec951d155bc7c8f1ec834f8a0f0764c68a87ff16930b645": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-ga-7zmmhc-f4-624ae931ead57817602853.exe.bin",
-  "screens": 8,
-  "text": "29b2f143e647d107"
+  "screens": 9,
+  "text": "f831879c85fdf4ec"
  },
  "07bd97d5183d3332bbaed3a5aacf7a107dd970e622d326e9d6dc385c025ff3b4": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -3767,13 +3767,13 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s118r13i-64ec501191332604565262.zip",
   "screens": 9,
-  "text": "42ee88855583fb3f"
+  "text": "fc2cd4c5ed182df6"
  },
  "205d40ecb3a59de97cc63b377dd6e12433022f3252cf3bf8bfe1aa3964ac1c78": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "6vtx-f7e-6239f0909fc43259972497.zip",
   "screens": 8,
-  "text": "df77f7d8a54e3147"
+  "text": "70aae15593112d4b"
  },
  "206dd8f4ca65f53fcef456f598cb2d55207650991731cf581947df175cabe248": {
   "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
@@ -3827,7 +3827,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-ga-7zxc-f6a-beta-624c3105484ec574409357.exe.bin",
   "screens": 9,
-  "text": "1914500ce5798626"
+  "text": "49aaad6890d60538"
  },
  "20c0e1b62c154d310f8d043d094873442327314efd702333f2dc668a4e82abf0": {
   "name": "fts-flashbiosupdateforpcd6hscenic6td931v4-405106-182.exe-5f672f473d051604376798.exe.bin",
@@ -4748,8 +4748,8 @@
  "27e60e41293f79b0c4418447e2d7a8de332b3425277549f8ce7e5b113dd4e3bf": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "7zmmh-f10-624ae8c70cad5540493695.zip",
-  "screens": 8,
-  "text": "5792df8ef732ff17"
+  "screens": 9,
+  "text": "533bca243bb84e62"
  },
  "28288a4805651123caac2adc719b38668590d8d5b07de510708cc16d5fdf6762": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -7681,7 +7681,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "motherboard-bios-7zx-fg-61d6073f3a002323928551.exe.bin",
   "screens": 8,
-  "text": "d894b62d015b5a86"
+  "text": "ff996a0e5552e6dc"
  },
  "3fe82c2b5e23d7f39037b2e068e716675447fd21d928a3fc581cb0d3d4ec4143": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -8866,8 +8866,8 @@
  "488305685ae613870b6dac857ba3089263fe8333e805bf7b42c5591fdfb8a84c": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "m92-1a05-61aa7669acab4170785553.zip",
-  "screens": 8,
-  "text": "2f90ab5842c09d2c"
+  "screens": 9,
+  "text": "b33814b9a8a0def4"
  },
  "48a2f643a224f2bdc6ed056f6596dadd901ef1803f6a4623deeb611fb437e197": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -9033,7 +9033,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-ga-7zm-ffc-622f69f4ed21c919188761.exe.bin",
   "screens": 9,
-  "text": "0ea6f4ed58be6fee"
+  "text": "bbf6405730c70d9d"
  },
  "49ffec960c962315ad60bf7c44e8095f22563ba9fc1831e36871b9c14b56baef": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -9135,7 +9135,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vtxd-f5-tj-6a359874db465670003044.BIN",
   "screens": 9,
-  "text": "ac0571260566666e"
+  "text": "e642a4fec3013d8e"
  },
  "4ab1d3d172aacb833c3cf62b135ed9a627adf3ae7d13827b36a206401e82e73f": {
   "bios": "Award 4.5x setup code in LHA module '2a59gl1c.BIN'",
@@ -10961,7 +10961,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "hs625110-63d7af52da86e789401629.zip",
   "screens": 8,
-  "text": "9a30bc9027000c86"
+  "text": "4dc8c056fe6da920"
  },
  "5adddc44eddc381e13ad2e3efd4085258a9d5d7531584c7ace87eefb7960998d": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -11013,7 +11013,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "2605tv11-6390cc9945325218987454.zip",
   "screens": 8,
-  "text": "966263285bc75d11"
+  "text": "7a7cc6d7aaac29f6"
  },
  "5b8d54b0a4d5a20bffebba9aab2c9979afd1bf8c81e528f5a8f595121c2f9960": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -11797,7 +11797,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "6vx7-4xa-f4c-623a0cdadb50f416909374.zip",
   "screens": 8,
-  "text": "71ecfc3a4d0f285d"
+  "text": "ab15c5ef726d1082"
  },
  "62a578f5ba942418d69b8864504e895d2224b2405f650d511c11000c18676c43": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -13465,7 +13465,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vx7-4x-f45-623a12d5ab1e5948050627.zip",
   "screens": 9,
-  "text": "e6b55fac3d8eaf82"
+  "text": "227d3fdda2c80809"
  },
  "70beaa998d222eb12be8c64d9636ffab9bd8800eb08f2cd59b8aa2ff56ba04c5": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -13599,7 +13599,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "7zxh-f4-624c2ea244943934371786.zip",
   "screens": 8,
-  "text": "4138f3e7ff9f69cf"
+  "text": "0e3df7e32a1f0541"
  },
  "71b6772838631c859d98fd2aa8ed05a779d46aad41191bda05b648addb03ec32": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -14405,7 +14405,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "motherboard-bios-6vtxe-f9-63ac3d2cae2d7776401350.exe.bin",
   "screens": 8,
-  "text": "cad6397a103682cd"
+  "text": "7a46d12b06e1f41d"
  },
  "7845ff236de48e973d89ffdfb4c94cd17616e3bca5e4c051cc77b5fcdf743867": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -14849,7 +14849,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "6vxd7-f6-623a1863b29ed772141947.zip",
   "screens": 8,
-  "text": "c1ea9c65b22e2bd0"
+  "text": "d8da458797a7b838"
  },
  "7b9f923765afc53c9c0bfa6dd5409d9e42e7e8a1e450e1a9ba4f08f6d13bbfe6": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15285,7 +15285,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "6vxdc7-f7b-623a192787178476198172.zip",
   "screens": 8,
-  "text": "8567c7697dc2fb3f"
+  "text": "82c5e0fdf99cf800"
  },
  "7f2db2f3ebdc4de07406b8c33739dbf018e5110372e4619296f104dd43de4739": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15339,7 +15339,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "a1640v10-637137ba0fa0a185894311.exe.bin",
   "screens": 9,
-  "text": "e26444ae6316854d"
+  "text": "ecfa2072d336c2f8"
  },
  "7fbd3cc3fb54b2ae161ceaf9b5c8406c3f59d2edce6230fa80ed521917d378c1": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -15581,7 +15581,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "7zxr-f9-624c5477e8607155349961.zip",
   "screens": 8,
-  "text": "ef5c07355498df62"
+  "text": "65488803c7a4eaba"
  },
  "815c8d71f1f2aedc061b5be56290ffd55d630c49d3011be56b2a922e2c26c5bb": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -15915,7 +15915,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vm7-4x-i-f2-6239e2c528b16197526196.zip",
   "screens": 9,
-  "text": "f644bbe65928e36a"
+  "text": "cd9af79198355a9c"
  },
  "851b6a427903a3e5455e39b56e54026f15b452932e4e8d9436adec57ffb25c1c": {
   "bios": "Award 4.5x setup code in LHA module '2a5ifm49.BIN'",
@@ -16513,7 +16513,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vm7-4e-i-f22-6239cf67cfd76156307338.zip",
   "screens": 9,
-  "text": "b93d5afe918c7b5f"
+  "text": "c6531c7f569fb656"
  },
  "89b488dabe56e475c997da08b48c64276c201f1d1d3dd5a460868d4e972c6761": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -17753,7 +17753,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "hs100012-6390860f35a8e538616648.zip",
   "screens": 9,
-  "text": "d8b44978e978ee6b"
+  "text": "09fd6dcc75efa64f"
  },
  "942b2cc55c4efbb287822f4dec08287ce9bc7dcd97cbeb47389b967decb6ae1b": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -17874,8 +17874,8 @@
  "9512e814a2751eb9c7d0678692bde9575f4a40e7ceb4ddc308ece0ea46039e39": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6309v75-61374dd1c7d53464815633.zip",
-  "screens": 8,
-  "text": "03d27e5c1c5623c9"
+  "screens": 9,
+  "text": "930508e711bfd0c2"
  },
  "95198bbccd5fbf0adac530c3410e5d8572a21c1df24b2758057da6984818ded8": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -17971,7 +17971,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-ga-7zxe-f9-61c336ddc7eb5367061623.exe.bin",
   "screens": 9,
-  "text": "e37055e8de4b7ab6"
+  "text": "3d91936025917dfc"
  },
  "95b300e1b721e7b7893cf291cd8c5a8ae43d4f51c9a59667f32a7b22a88de680": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -18983,7 +18983,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-ga-7vm-f7c-beta-625466d3064e9467951456.exe.bin",
   "screens": 9,
-  "text": "128173742d2f7765"
+  "text": "7ee826548d65f3a4"
  },
  "9d575bb69084e711787194cd70dc57cfaa8aa876e3b3dfc6d53273bd6d1f7c67": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -20181,7 +20181,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "6vmml-f3-6239e87ce1fa3447782840.zip",
   "screens": 8,
-  "text": "f02415cfd8b8cbe4"
+  "text": "b76c68f6b5f67e46"
  },
  "a6f96e36135ed78e2070e6a89cd728ff616d6f2760892b72f032d84a7e2c8d37": {
   "bios": "Phoenix BIOS before 4.0 (PhoenixBIOS 1.x, Phoenix SETUP Util",
@@ -22325,7 +22325,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "821lr-bios-20020812s-2m-ami-635104c8d791c088329806.zip",
   "screens": 8,
-  "text": "e0a58446af0d2380"
+  "text": "626b46b9c5a68b40"
  },
  "b9116bba40f764841a17ddd060b616d73ca9c625af0ddf2b48e2f3cb84bb4500": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -23981,7 +23981,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "hs605011-63d7a0e451638580870577.exe.bin",
   "screens": 9,
-  "text": "b0a9315dd8151708"
+  "text": "2a1dec34b4f14eec"
  },
  "c60af23f1c0e6e2e7cf84f657ea7b7b24fa672a39cdaec374153d99af29775ec": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -25301,7 +25301,7 @@
   "bios": "AMIBIOS with the Easy Setup (text mode, menu bar), captured ",
   "name": "halley32-636644fea7eba013702697.exe.bin",
   "screens": 9,
-  "text": "a5c8a46cbae6cccd"
+  "text": "444ae46aab6c55dc"
  },
  "d0c884a764397b22669e3c7713d7f214b6b99c55a1eb53e2363a0d7d350e2ec8": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
@@ -29157,7 +29157,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "a1651v113-6371fbfc58702695189804.exe.bin",
   "screens": 9,
-  "text": "b872376d164bfcc9"
+  "text": "af6e023d1b8282d3"
  },
  "f0893498e8bd05791cc458bf7b9c408d76ff47448c9428846084a5bb3b41ceba": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -29695,7 +29695,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vm7-4e1-f24-6239d0d24af3d826089899.zip",
   "screens": 9,
-  "text": "c9c1bcb0a083beef"
+  "text": "3d5eeb00893340a6"
  },
  "f5431030f233ecf6e8bb807d07e49c65b69579a3d75a196a0fe958576ec780e6": {
   "bios": "UEFI firmware (AMI Aptio, ASUS), setup pages read from the i",
