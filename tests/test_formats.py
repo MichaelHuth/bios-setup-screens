@@ -13,6 +13,7 @@ import pytest
 import ami
 import award6_setup
 import award_setup
+import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
 import uefi_setup
@@ -364,3 +365,28 @@ def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
         13: "HW Monitor",
         21: "Page 21",
     }
+
+
+def test_hiflex_direct_start_takes_posts_monitor_setup() -> None:
+    def call(at: int, to: int) -> bytes:
+        return b"\xe8" + struct.pack("<h", to - (at + 3))
+
+    # RunTime: a write routine with the index in AH, called by a run of mov ax,imm ; call
+    runtime = bytearray(bytes.fromhex("9cfa52ba950286c4eeeb0086e042ee5a9dc3"))
+    for value in (0x1370, 0x50FF, 0x0B1B):
+        runtime += b"\xb8" + struct.pack("<H", value) + call(len(runtime) + 3, 0)
+    # a read routine (in al,dx) is not a write routine: calls into it are left alone
+    reader = len(runtime)
+    runtime += bytes.fromhex("ba95028ac4ee42ecc3")
+    for value in (0x0B00, 0x0B01, 0x0B02):
+        runtime += b"\xb8" + struct.pack("<H", value) + call(len(runtime) + 3, reader)
+    writes = hfjump_setup.monitor_writes(bytes(runtime), 0)
+    assert writes == [(0x13, 0x70), (0x50, 0xFF), (0x0B, 0x1B)]
+    # POST, loaded at offset 100h: the index in AL, a table walked by mov si ; mov cx ; mov ax,cs:[si]
+    post = bytearray(bytes.fromhex("5152ba9502ee4286c4ee5a59c3"))
+    table = 40
+    post += b"\xbe" + struct.pack("<H", 0x100 + table) + bytes.fromhex("b903002e8b04")
+    post += call(len(post), 0) + bytes.fromhex("83c602e2f5c3")
+    post = post.ljust(table, b"\x90") + bytes((0x13, 0x70, 0x0B, 0x5B, 0x5D, 0x00))
+    writes = hfjump_setup.monitor_writes(bytes(post), 0x100)
+    assert writes == [(0x13, 0x70), (0x0B, 0x5B), (0x5D, 0x00)]
