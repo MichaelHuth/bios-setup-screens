@@ -153,6 +153,24 @@ def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
     assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
 
 
+def test_a_vt82c686a_monitor_answers_in_the_window_post_opened() -> None:
+    # function 4: monitor at C00h (70h), decoded (74h bit 0); 38 C and 1.6 V, the CPU fan at
+    # 4500 RPM (divisor 2), the system fan at 3000 RPM with divisor 4 set in 47h
+    def port_in(port: int, at: int) -> bytes:  # mov dx,port ; in al,dx ; mov [at],al
+        return b"\xba" + struct.pack("<H", port) + b"\xec" + store_al(at)
+
+    code = DS0 + port_in(0xC20, OUT) + port_in(0xC22, OUT + 1) + port_in(0xC29, OUT + 2)
+    code += b"\xba\x47\x0c\xb0\x9f\xee" + port_in(0xC2A, OUT + 3)  # out C47h,9Fh
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    function4 = bytearray(256)
+    function4[0:4] = b"\x06\x11\x57\x30"
+    emu.pci_devices[(7, 4)] = function4
+    assert emu._via_hwmon_index(0xC20) is None  # (no window yet)
+    function4[0x70:0x75] = b"\x01\x0c\x00\x00\x01"
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 4) == bytes((0xA0, 0x82, 150, 112))
+
+
 def test_halt_with_interrupts_off() -> None:
     emu = bios_emu.BiosEmulator(rom(text(b"OK") + HALT))
     screen = emu.run(0xF000, 0xFFF0)

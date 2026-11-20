@@ -203,6 +203,12 @@ FAN_RPM = (4500, 3000, 2700)
 HWMON_ITE_ONLY = frozenset((0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x13, 0x14, 0x15, 0x16, 0x17))
 HWMON_WINBOND_ONLY = frozenset((0x47, 0x4E, 0x4F))
 HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
+# VT82C686A's own hardware monitor (function 4: I/O base at 70h, decoded with 74h bit 0), in
+# the scales of the Linux via686a driver: temperatures 38, 32 and 45 C at 20h, 21h and 1Fh (the
+# chip's curve), Vcore 1.6 V, 2.5 V, 3.3 V, 5 V and 12 V at 22h-26h, fan counts at 29h/2Ah
+# (the CPU and system fans of FAN_RPM, with the divisors of 47h bits 4-5 and 6-7)
+VIA_HWMON = {0x1F: 0xAE, 0x20: 0xA0, 0x21: 0x93, 0x22: 0x82, 0x23: 0xCD, 0x24: 0xCB}
+VIA_HWMON |= {0x25: 0xC5, 0x26: 0xC3, 0x47: 0x5F}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
     0x2440: {
@@ -1433,6 +1439,9 @@ class BiosEmulator:
         self.headland_index, self.headland = 0, bytearray(256)
         self.hwmon_divisors = dict(HWMON_DIVISORS)
         self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
+        self.via_hwmon = bytearray(0x80)  # VT82C686A's monitor registers (see VIA_HWMON)
+        for index, value in VIA_HWMON.items():
+            self.via_hwmon[index] = value
         self.reset_control = 0  # port CF9h
         self.umc = self.pci_devices.get((16, 0), b"")[0:2] == bytes.fromhex("6010")
         if self.umc:  # after reset: reads from the ROM, writes to the RAM behind it
@@ -3602,6 +3611,15 @@ class BiosEmulator:
             return base + 0x2F if base else -1
         return -1
 
+    def _via_hwmon_index(self, port: int) -> int | None:
+        """The VT82C686A hardware-monitor register a port is (function 4: base 70h, on with 74h
+        bit 0), or None."""
+        cfg = self.pci_devices.get((7, 4))
+        if cfg is None or bytes(cfg[0:4]) != b"\x06\x11\x57\x30" or not cfg[0x74] & 1:
+            return None
+        base = int.from_bytes(bytes(cfg[0x70:0x72]), "little") & 0xFF80
+        return port - base if base and 0 <= port - base < 0x80 else None
+
     def _via_pm_base(self) -> int:
         """The VIA south bridge's power management I/O base: the VT82C686's (function 4,
         register 48h) or the VT82C596's (function 3; AMI's VT693 boot block sets it there
@@ -3726,6 +3744,11 @@ class BiosEmulator:
                 return self.hwmon_divisors[index]
             if (count := self._fan_count(index)) is not None:
                 return count
+        if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
+            if reg in (0x29, 0x2A):
+                shift = self.via_hwmon[0x47] >> 2 * (reg - 0x27) & 3
+                return min(0xFE, max(1, round(1_350_000 / (FAN_RPM[reg - 0x29] << shift))))
+            return self.via_hwmon[reg]
         if port == 0x800 and self.mylex_counter:  # (MVE486: the memory test's byte count,
             return uc.reg_read(UC_X86_REG_EBX) >> 16 & 0xFF  # compared with its own in EBX)
         if port == 0x2A and self.um8498_phase == 2:
@@ -4192,6 +4215,9 @@ class BiosEmulator:
                 self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
         if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
             self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
+        if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
+            if reg not in VIA_HWMON or reg == 0x47:  # (the readings are the chip's own)
+                self.via_hwmon[reg] = value & 0xFF
         if 0xC000 <= port <= 0xCFFF and self.pci_cse & 0xF0:
             if self.pam_valid and not self.pci_used:
                 self._shadow_change(lambda: setattr(self, "pci_used", True))
