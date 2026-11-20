@@ -3685,7 +3685,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "760-bios-19990301s-2m-ami-634ed69fe58e8217811672.zip",
   "screens": 9,
-  "text": "1114bd91b19d02fa"
+  "text": "bf623e58ca003c16"
  },
  "1f7872163c14982e7518e8390884d5e3c48742051724d612236b1bf0de5f7bd4": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -4765,7 +4765,7 @@
   "bios": "AMI WinBIOS (95 generation), captured by running the whole R",
   "name": "990401s-653ff85a5f3ba107006171.zip",
   "screens": 10,
-  "text": "5ab759ee1dd205b1"
+  "text": "e52cfa6e0752102b"
  },
  "28482e1012cf6faafb03295883f367c444ba9ebed1ad11c8cffd58e12f01b8ba": {
   "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
@@ -5455,7 +5455,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "3300a-021099-62876e9d94efd588210101.zip",
   "screens": 9,
-  "text": "8c8dab10a1c64899"
+  "text": "e1c554b29726e898"
  },
  "2e21d9ffc16bc036df295b1206ad82e3f20d93c4e735fcd8bcd9bfafba04080e": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
@@ -6939,7 +6939,7 @@
   "bios": "AMI WinBIOS (95 generation), captured by running the whole R",
   "name": "pii-2300-68b4d78f1742b472836637.bin",
   "screens": 10,
-  "text": "5ab759ee1dd205b1"
+  "text": "e52cfa6e0752102b"
  },
  "3931c80bcbf638933819da7092f881ab56dde90df505fd57330f09fd09b3c1f3": {
   "name": "V7VEGA.VBI",
@@ -10958,10 +10958,10 @@
   "text": "2dadec7d863e8c7f"
  },
  "5adda3cf0056a303bd8d826f745826c541eefff7b4a46e44518dc377eaeae820": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "hs625110-63d7af52da86e789401629.zip",
-  "screens": 8,
-  "text": "4dc8c056fe6da920"
+  "screens": 9,
+  "text": "5e510e97f2028e03"
  },
  "5adddc44eddc381e13ad2e3efd4085258a9d5d7531584c7ace87eefb7960998d": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -11010,10 +11010,10 @@
   "text": "53b1d8d18d8c7d97"
  },
  "5b6094bda388782e7932fb4446d5ad71a6f843a365ed626bd782a84feee9a891": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "2605tv11-6390cc9945325218987454.zip",
-  "screens": 8,
-  "text": "7a7cc6d7aaac29f6"
+  "screens": 9,
+  "text": "213f4d0fbc532f95"
  },
  "5b8d54b0a4d5a20bffebba9aab2c9979afd1bf8c81e528f5a8f595121c2f9960": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -18693,7 +18693,7 @@
   "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "fts-biosupdated802noflashbiosepromv320-320334-152.bin-5f63d2fd3e40c659077550.bin",
   "screens": 4,
-  "text": "256264c0a01c1ede"
+  "text": "2356d2d7d5d6f15d"
  },
  "9b2212f266eb9508db22f4491c5e02f9aaf570167036299c36bfe281d19fc788": {
   "name": "881032j-61d60e2b03bf5372694890.zip",
@@ -22351,7 +22351,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "768vmr-bios-20001026s-2m-ami-634ee240a97e6592711119.zip",
   "screens": 9,
-  "text": "2c11e804650c29e2"
+  "text": "fd4fe2d9ded8bb90"
  },
  "b931c038cc2388047224fae3a315c7ec0de5c7448be5040c69c2c46807efcc13": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -23358,10 +23358,10 @@
   "text": "5c23c6a0992717ff"
  },
  "c06072ff54aa31b14268a3f9319f190fdcac945dc5449ea949fd5dc564135c4d": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "777vmr-bios-20001026s-2m-ami-634f01f591874001723660.zip",
-  "screens": 8,
-  "text": "4dafb0d58d01ef1f"
+  "screens": 9,
+  "text": "18482d300351bc88"
  },
  "c0726dc65f94d0a16ed3129ef5a429cfc62d00dafe15131d8ad7f5777ab4df8c": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
