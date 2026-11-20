@@ -200,6 +200,20 @@ def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
     assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
 
 
+def test_an_ite_monitor_answers_at_the_base_of_its_logical_device_4() -> None:
+    def sio(index: int, value: int) -> bytes:
+        # mov al,index ; out 2Eh,al ; mov al,value ; out 2Fh,al
+        return b"\xb0" + bytes((index,)) + b"\xe6\x2e\xb0" + bytes((value,)) + b"\xe6\x2f"
+
+    read_806 = b"\xba\x05\x08\xb0\x20\xee\x42\xec"  # mov dx,805h ; index 20h (Vcore) ; in al,dx
+    code = DS0 + read_806 + store_al(OUT)  # (not set up yet: nothing there)
+    code += sio(0x07, 0x04) + sio(0x60, 0x08) + sio(0x61, 0x00) + sio(0x30, 0x01)
+    code += read_806 + store_al(OUT + 1)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 2) == b"\xff\x64"  # then 1.6 V
+
+
 def test_a_vt82c686a_monitor_answers_in_the_window_post_opened() -> None:
     # function 4: monitor at C00h (70h), decoded (74h bit 0); 38 C and 1.6 V, the CPU fan at
     # 4500 RPM (divisor 2), the system fan at 3000 RPM with divisor 4 set in 47h

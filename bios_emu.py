@@ -1207,6 +1207,7 @@ class BiosEmulator:
         # the rest reads FFh as before (no chip found). Fujitsu-Siemens D1326's Phoenix clears
         # bit 5 of logical device 7's register F0h and waits until it reads clear.
         self.sio_index, self.sio_regs = {0x2E: 0, 0x4E: 0}, {}
+        self.ite_monitor = 0  # an ITE environment controller's base (_ite_monitor_base)
         self.smbus_block_read = b""  # the bytes of a block read still to come
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
@@ -3761,6 +3762,8 @@ class BiosEmulator:
             return 0
         if port == 0xB3 and size == 1:  # APM status: a scratch byte, 0 after power-on (an
             return self.apm_status  # AMIBIOS boot block resets while it reads non-zero, rc6103)
+        if self.ite_monitor and 5 <= port - self.ite_monitor <= 6:
+            port = 0x290 + port - self.ite_monitor  # (the monitor at the ITE's own base)
         if port == 0x295 and size == 1:  # Winbond hardware monitor's index: read back, not
             return self.hwmon_index & 0x7F  # busy (bit 7; AMIBIOS 7 waits for it, s85mir3l)
         if port == 0x296 and size == 1:
@@ -4030,6 +4033,16 @@ class BiosEmulator:
             return port, None, index
         return port, self.sio_regs.get((port, None, 0x07), 0), index
 
+    def _ite_monitor_base(self, config: int) -> None:
+        """The base of an ITE environment controller (logical device 4: 60h-61h, on with 30h
+        bit 0) as set through the config port: its address and data ports (base + 5 and 6) are
+        the monitor's, as 295h/296h. Only bases from 400h on (PCChips' ITE boards: 800h; a
+        serial port is logical device 4 of other Super I/O chips)."""
+        regs = self.sio_regs
+        base = regs.get((config, 4, 0x60), 0) << 8 | regs.get((config, 4, 0x61), 0)
+        on = regs.get((config, 4, 0x30), 0) & 1
+        self.ite_monitor = base & 0xFFF8 if on and base >= 0x400 else 0
+
     def _div_overflow(self, uc: Uc) -> bool:
         """A 32-bit DIV whose quotient does not fit: BIOSes measure the CPU clock with RDTSC
         over a delay and divide by the expected count (PCChips M571); Unicorn's time stamp
@@ -4240,7 +4253,10 @@ class BiosEmulator:
             self.sio_index[port] = value & 0xFF
             return
         if port in (0x2F, 0x4F) and size == 1:
-            self.sio_regs[self._sio_key(port - 1)] = value & 0xFF
+            key = self._sio_key(port - 1)
+            self.sio_regs[key] = value & 0xFF
+            if key[1:] in ((4, 0x30), (4, 0x60), (4, 0x61)):
+                self._ite_monitor_base(port - 1)
             return
         if port == 0xCF8 and size == 1:  # mechanism #2 (see _in)
             self.pci_cse = value & 0xFF
@@ -4248,6 +4264,8 @@ class BiosEmulator:
         if port == 0xCFA and size == 1:
             self.pci_forward = value & 0xFF
             return
+        if self.ite_monitor and 5 <= port - self.ite_monitor <= 6:
+            port = 0x290 + port - self.ite_monitor  # (the monitor at the ITE's own base)
         if port == 0x295:
             self.hwmon_index = value & 0xFF
             # (Winbond: fan divisors 47h, bank select 4Eh, vendor ID 4Fh)

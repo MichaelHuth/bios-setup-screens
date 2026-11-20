@@ -63,7 +63,8 @@ IVT_INSTALL = re.compile(rb"\xbe(..)\xb9\x20\x00\x2e\xa5\x47\x47\xe2\xfa", re.S)
 # and its callers: runs of mov ax,imm ; call (RunTime of Gigabyte's 030808: 0Bh = 1Bh) or a table
 # walked by mov si,<table> ; mov cx,<pairs> ; mov ax,cs:[si] ; call (POST of GA-6CMC7: 0Bh = 5Bh)
 MONITOR_WRITE = re.compile(
-    rb"\xba\x95\x02(\x86\xc4|\x86\xe0|\x8a\xc4)?\xee[^\xec\xee]{0,12}?\x42(?:\x86\xc4|\x86\xe0)?\xee",
+    rb"\xba\x95\x02(\x86\xc4|\x86\xe0|\x8a\xc4)?\xee"
+    rb"[^\xec\xee]{0,12}?\x42(?:\x86\xc4|\x86\xe0)?\xee",
     re.S,
 )
 WRITE_PROLOGUE = set(b"\x9c\xfa\x50\x51\x52\x53")
@@ -73,6 +74,7 @@ MONITOR_TABLE = re.compile(rb"\xbe(..)\xb9(..)\x2e\x8b\x04\xe8(..)\x83\xc6\x02\x
 # (the index) ; mov al,ah ; out dx,al (6VTX: its table ends with 47h = F0h, fan divisors 8)
 VIA_MONITOR_WRITE = re.compile(rb"\xb6\x0c\x8a\xd0\x8a\xc4\xee")
 VIA_MONITOR_BASE = 0xC00
+ITE_MONITOR_INDEX = re.compile(rb"\xba\x05([\x04-\x0f])\xee")
 
 
 def _real(mod: dict[str, Any], rom: bytes) -> tuple[int, int]:
@@ -199,6 +201,13 @@ class Direct:
             if mine[0:4] == theirs[0:4] and theirs[0x74] & 1:
                 mine[0x70:0x75] = theirs[0x70:0x75]
                 emu.via_hwmon[:] = posted.via_hwmon
+        # an ITE environment controller the Setup Server reads at its own base (mov dx,805h ;
+        # out dx,al: PCChips' ITE boards at 800h), which POST sets in logical device 4
+        ite = ITE_MONITOR_INDEX.search(m1["data"])
+        if ite and not emu.ite_monitor:
+            for reg, value in ((0x60, ite.group(1)[0]), (0x61, 0x00), (0x30, 0x01)):
+                emu.sio_regs[(0x2E, 4, reg)] = value
+            emu._ite_monitor_base(0x2E)
         # the RunTime owns the F000 half from its real_off on: a module whose header also names
         # a place there (module 0B Int-10) is loaded elsewhere by POST, so it is left out
         rt_lo, rt_hi = base2, base2 + len(m2["data"])
