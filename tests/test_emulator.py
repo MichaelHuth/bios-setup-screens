@@ -78,6 +78,22 @@ def test_the_timer_counts_down() -> None:
     assert 0 < second < first <= 0xFFFF
 
 
+def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine() -> None:
+    # Award's 286 POST counts refresh cycles (port 61h bit 4) between two timer interrupts
+    # and shows "REFRESH TIMING ERROR" outside about 1370-2290
+    poll = b"\xe4\x61\xa8\x10\x75\xfa"  # in al,61h ; test al,10h ; jnz (to the in)
+    poll += b"\xe4\x61\xa8\x10\x74\xfa\x42\xeb\xf1"  # the same with jz ; inc dx ; jmp (first in)
+    start = DS0 + b"\xb0\x36\xe6\x43\xb0\x00\xe6\x40\xe6\x40"  # channel 0, mode 3, count 0
+    first = CODE_AT + len(start) + 12 + 7  # (after the vector, the mask and sti ; jmp $)
+    start += set_vector(8, first) + b"\xb0\xfe\xe6\x21\xfb\xeb\xfe"  # IRQ 0 only ; sti ; jmp $
+    count = b"\x31\xd2\x83\xc4\x06\xb0\x20\xe6\x20\xfb" + poll  # dx = 0 ; drop the frame ; EOI
+    second = first + 12 + len(count)
+    code = start + set_vector(8, second) + count + b"\x89\x16" + struct.pack("<H", OUT) + HALT
+    emu = bios_emu.BiosEmulator(rom(code), timer_irq=True, max_instructions=5_000_000)
+    emu.run(0xF000, 0xFFF0)
+    assert 1400 < struct.unpack("<H", memory(emu, OUT, 2))[0] < 2250
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))

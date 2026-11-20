@@ -102,6 +102,9 @@ FONT_PLANE = 0xA0000  # fonts loaded into plane 2: 32 bytes per character
 SHADOW_BASE = 0xC0000
 ALI_P54C = b"PCI/ISA P54C BIOS"  # (Acer: see _ali_pam)
 TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_irq)
+# refresh toggles (port 61h bit 4, one per 15 us) in one 55 ms timer tick: a POST counting them
+# between two timer interrupts expects about 1820 cycles (Award 286: "REFRESH TIMING ERROR")
+REFRESH_PER_TICK = 3640
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -1408,6 +1411,9 @@ class BiosEmulator:
         self.max_seconds = MAX_SECONDS
         self.key_polls = 0
         self.ticks = 0
+        # refresh toggles read since the last timer tick; a slice ends at a tick's worth while
+        # IRQ 0 can come (refresh_cut)
+        self.refresh_toggles, self.refresh_cut = 0, False
         self.rtc_reads = 0
         self.stopped_reason = ""
         self._init_bda()
@@ -3766,6 +3772,18 @@ class BiosEmulator:
             return self.via_regs[self.via_index]
         if port == 0x61:
             self.port61 ^= 0x10  # refresh toggle, used by delay loops
+            self.refresh_toggles += 1
+            if (
+                self.refresh_toggles >= REFRESH_PER_TICK
+                and self.timer_irq
+                and self.pit0_running
+                and not self.irq0_pending
+                and not self.pic_mask & 1
+                and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200
+                and not uc.reg_read(UC_X86_REG_CR0) & 1
+            ):
+                self.refresh_cut = True  # a tick has passed: the slice ends, IRQ 0 comes
+                uc.emu_stop()
             if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
                 self.port61 ^= 0x20
             return self.port61
@@ -4907,7 +4925,7 @@ class BiosEmulator:
         self._raise_irq0()
 
     def _raise_irq0(self) -> None:
-        self.irq0_pending = True
+        self.irq0_pending, self.refresh_toggles = True, 0
         self._want_hook("irq0_hook")
 
     def _irq0(self, uc: Uc, address: int, size: int, generation: int) -> None:
@@ -4991,6 +5009,7 @@ class BiosEmulator:
                         eip_back = uc.hook_add(UC_HOOK_CODE, self._eip_back, eip, low, low)
                         _flush_tb(uc)
                 self.in_emulation = True
+                self.refresh_cut = False
                 try:
                     uc.emu_start(pc, 0xFFFFFFFF, count=count)
                 finally:
@@ -5063,6 +5082,8 @@ class BiosEmulator:
                         remaining -= 1000
                         pc = self._code_address()
                         continue
+                if self.refresh_cut:  # (charged about what it ran: a poll loop of 8 instructions)
+                    count = min(count, 8 * REFRESH_PER_TICK)
                 remaining -= count
                 if self.stopped_reason:  # stopped by a hook (uc.emu_stop)
                     break
