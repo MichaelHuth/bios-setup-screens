@@ -885,6 +885,9 @@ CPU_BRANDS = dict.fromkeys((0x2560, 0x2570, 0x2578), "Intel(R) Pentium(R) 4 CPU 
 # model 2 stepping 7, brand index 9 (Fujitsu-Siemens D1326's Phoenix, 845: Unicorn's own
 # signature 306C4h is not in its table, and it searches the table again for good)
 P4_SIGNATURE_HOSTS = (0x1A30,)
+# the Northwood's signature (family Fh, model 2, stepping 7): CPUID 1 and EDX after a
+# reset (Dell's PLUS 1.10 keeps DL from the reset in CMOS for its "Processor 0 ID")
+P4_SIGNATURE = 0xF27
 CPU_BRANDS[0x1A30] = "Intel(R) Pentium(R) 4 CPU 2.00GHz"
 KBC_REPLIES = (0xFA, 0xAA)  # acknowledge, self-test passed
 # An interrupt the emulator delivers is entered through a stub written for it into the BIOS
@@ -4071,7 +4074,7 @@ class BiosEmulator:
         if self.cpu_p4_signature and leaf == 1 and not self.cpu_amd:
             for reg, value in zip(
                 (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
-                (0xF27, 0x00010809, 0, 0xBFEBFBFF),
+                (P4_SIGNATURE, 0x00010809, 0, 0xBFEBFBFF),
             ):
                 uc.reg_write(reg, value)
             return 1
@@ -4587,11 +4590,16 @@ class BiosEmulator:
 
     # --- run --------------------------------------------------------------------------------
 
+    def _reset_signature(self) -> int:
+        return P4_SIGNATURE if self.cpu_p4_signature and not self.cpu_amd else 0x0435
+
     def run(
         self, cs: int, ip: int, ss: int = 0x0030, sp: int = 0x0100, ds: int = 0x40, es: int = 0
     ) -> Screen:
         uc = self.uc
         self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
+        if self.from_reset and self.cpu_p4_signature and not self.cpu_amd:
+            uc.reg_write(UC_X86_REG_EDX, P4_SIGNATURE)  # (as after power-on)
         if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
@@ -4679,8 +4687,8 @@ class BiosEmulator:
         uc.reg_write(UC_X86_REG_CS, 0xF000)
         uc.reg_write(UC_X86_REG_EIP, 0xFFF0)
         uc.reg_write(UC_X86_REG_EFLAGS, 2)
-        uc.reg_write(UC_X86_REG_EDX, 0x0435)  # the CPU's signature after a reset (a 486; MR
-        # BIOS keeps it in port 85h and checks it)
+        # the CPU's signature after a reset (a 486; MR BIOS keeps it in port 85h and checks it)
+        uc.reg_write(UC_X86_REG_EDX, self._reset_signature())
         if bytes(uc.mem_read(0xF0000, 0x10000)) != bytes(uc.mem_read(0xFFFF0000, 0x10000)):
             self._reset_alias()
         _flush_tb(self.uc)

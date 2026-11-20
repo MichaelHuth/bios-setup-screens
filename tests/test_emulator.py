@@ -200,6 +200,27 @@ def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
     assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
 
 
+@pytest.mark.parametrize("host_id, signature", [(0, 0x0435), (0x1A30, 0xF27)])
+def test_edx_holds_the_cpus_signature_after_a_reset(host_id: int, signature: int) -> None:
+    # at power-on: mov [OUT],edx ; the 8042's reset (out 64h,FEh), then mov [OUT+4],edx
+    code = (
+        DS0
+        + b"\x80\x3e\x00\x06\x01\x74\x10"  # cmp byte [600h],1 ; je again
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT)
+        + b"\xc6\x06\x00\x06\x01\xb0\xfe\xe6\x64\xeb\xfe"  # mov byte [600h],1 ; reset
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT + 4)  # again:
+        + HALT
+    )
+    emu = bios_emu.BiosEmulator(rom(code), host_id=host_id)
+    emu.kbc_reset_in_place = True
+    emu.run(0xF000, 0xFFF0)
+    at_power_on, after_reset = struct.unpack("<2I", memory(emu, OUT, 8))
+    assert after_reset == signature
+    assert at_power_on == (signature if host_id else 0)  # (others: as before)
+
+
 def test_the_post_screen_goes_with_the_setup_screens() -> None:
     def screen(s: bytes) -> Screen:
         out = Screen()
