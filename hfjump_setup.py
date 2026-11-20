@@ -69,6 +69,10 @@ MONITOR_WRITE = re.compile(
 WRITE_PROLOGUE = set(b"\x9c\xfa\x50\x51\x52\x53")
 MONITOR_CALLS = re.compile(rb"(?:\xb8..\xe8..){3,}", re.S)
 MONITOR_TABLE = re.compile(rb"\xbe(..)\xb9(..)\x2e\x8b\x04\xe8(..)\x83\xc6\x02\xe2", re.S)
+# the VT82C686A's own monitor at C00h as Gigabyte's VIA boards write it: mov dh,0Ch ; mov dl,al
+# (the index) ; mov al,ah ; out dx,al (6VTX: its table ends with 47h = F0h, fan divisors 8)
+VIA_MONITOR_WRITE = re.compile(rb"\xb6\x0c\x8a\xd0\x8a\xc4\xee")
+VIA_MONITOR_BASE = 0xC00
 
 
 def _real(mod: dict[str, Any], rom: bytes) -> tuple[int, int]:
@@ -114,16 +118,19 @@ def _key_state(emu: bios_emu.BiosEmulator) -> None:
     uc.reg_write(UC_X86_REG_EFLAGS, uc.reg_read(UC_X86_REG_EFLAGS) | 0x200)
 
 
-def monitor_writes(data: bytes, off: int) -> list[tuple[int, int]]:
+def monitor_writes(
+    data: bytes, off: int, write: re.Pattern[bytes] = MONITOR_WRITE
+) -> list[tuple[int, int]]:
     """The (index, value) writes of the hardware-monitor set-up in a module's image (loaded at
-    offset off of its paragraph): the runs of calls into its write routine, then its tables."""
+    offset off of its paragraph): the runs of calls into its write routine (found by write),
+    then its tables."""
     starts: dict[int, bool] = {}  # write routine entry -> index in AH
-    for w in MONITOR_WRITE.finditer(data):
+    for w in write.finditer(data):
         start = w.start()
         while start > 0 and w.start() - start < 6 and data[start - 1] in WRITE_PROLOGUE:
             start -= 1
         for entry in range(start, w.start() + 1):
-            starts[entry] = w.group(1) is not None
+            starts[entry] = w.lastindex is not None and w.group(1) is not None
 
     def target(end: int, rel: bytes) -> int:
         return (end + off + struct.unpack("<h", rel)[0] & 0xFFFF) - off
@@ -221,6 +228,9 @@ class Direct:
                 for index, value in monitor_writes(m["data"], _real(m, rom)[1]):
                     emu._out(uc, 0x295, 1, index, None)
                     emu._out(uc, 0x296, 1, value, None)
+                via = monitor_writes(m["data"], _real(m, rom)[1], VIA_MONITOR_WRITE)
+                for index, value in via:
+                    emu._out(uc, VIA_MONITOR_BASE + index, 1, value, None)
         uc.reg_write(UC_X86_REG_AX, 0x2000)  # AL = 0: the "enter setup" branch
         self.blob = rom + hints
         screen = self._as_text(emu.run(SEG4, entry, ss=0x0030, sp=0xFFFE, ds=0x5000, es=0x5000))

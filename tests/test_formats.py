@@ -398,3 +398,12 @@ def test_hiflex_direct_start_takes_posts_monitor_setup() -> None:
     post = post.ljust(table, b"\x90") + bytes((0x13, 0x70, 0x0B, 0x5B, 0x5D, 0x00))
     writes = hfjump_setup.monitor_writes(bytes(post), 0x100)
     assert writes == [(0x13, 0x70), (0x0B, 0x5B), (0x5D, 0x00)]
+    # a VT82C686A board's: (index, value) words, then mov dh,0Ch ; mov dl,al ; mov al,ah ; out
+    via = bytearray(bytes((0x2B, 0xFF, 0x2C, 0x00, 0x47, 0xF0)))
+    routine = len(via)
+    via += bytes.fromhex("5251b60c8ad08ac4eee6eb595ac3")
+    via += b"\xbe\x00\x00\xb9\x03\x00\x2e\x8b\x04" + call(len(via) + 9, routine)
+    via += bytes.fromhex("83c602e2f5c3")
+    assert hfjump_setup.monitor_writes(bytes(via), 0) == []  # (not the 295h routine)
+    writes = hfjump_setup.monitor_writes(bytes(via), 0, hfjump_setup.VIA_MONITOR_WRITE)
+    assert writes == [(0x2B, 0xFF), (0x2C, 0x00), (0x47, 0xF0)]
