@@ -212,6 +212,13 @@ HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
 # (the CPU and system fans of FAN_RPM, with the divisors of 47h bits 4-5 and 6-7)
 VIA_HWMON = {0x1F: 0xAE, 0x20: 0xA0, 0x21: 0x93, 0x22: 0x82, 0x23: 0xCD, 0x24: 0xCB}
 VIA_HWMON |= {0x25: 0xC5, 0x26: 0xC3, 0x47: 0x5F}
+# Genesys GL520SM at SMBus 2Dh (PCChips' VIA boards), in the scales of the Linux gl520sm
+# driver: chip ID 20h, temperatures 38 and 32 C at 04h and 0Eh (value - 130), Vcore 1.6 V at
+# 0Dh and 3.3 V at 14h (19 mV steps), 12 V at 13h (through the board's divider), 5 V at 15h
+# (23.75 mV steps); the fan counts of FAN_RPM in the word at 07h (fan 1 first), with the
+# divisors of 0Fh bits 6-7 and 4-5 (480000 / (count * divisor) RPM)
+GL520_ADDRESS = 0x2D
+GL520 = {0x00: 0x20, 0x04: 0xA8, 0x0D: 0x54, 0x0E: 0xA2, 0x13: 0x98, 0x14: 0xAE, 0x15: 0xD2}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
     0x2440: {
@@ -1218,6 +1225,9 @@ class BiosEmulator:
         }
         self.spd_asked = False
         self.smbus_devices = {}  # other SMBus devices: address -> registers (_smbus_write)
+        gl520 = self.smbus_devices[GL520_ADDRESS] = bytearray(256)
+        for reg, value in GL520.items():
+            gl520[reg] = value
         self.smbus_result, self.smbus_idle = 0, 0  # (see _in: an end bit cleared too early)
         self.pam_base = 0x90 if host_id in PAM_AT_90 else 0x59
         self.vga_card_rom = None
@@ -2256,6 +2266,11 @@ class BiosEmulator:
             smbus_bar = SMBUS_FUNCTIONS.get(key)
             if smbus_bar is not None and smbus_bar <= reg + size - 1 and reg <= smbus_bar + 1:
                 base = int.from_bytes(bytes(cfg[smbus_bar : smbus_bar + 2]), "little") & 0xFFF0
+                self.smbus_base = base or None
+            if key == (7, 3) and cfg[0:2] == b"\x06\x11" and 0x80 <= reg + size - 1 and reg <= 0x81:
+                # the VT82C596's SMBus base (function 3, 80h; Linux i2c-viapro's SMBBA2): AMI's
+                # VIA boards modelled with a 686 set it there (PCChips M768VMR: 5F00h)
+                base = int.from_bytes(bytes(cfg[0x80:0x82]), "little") & 0xFFF0
                 self.smbus_base = base or None
         if self.sis496 and (self.pci_addr & 0x80FFFF00) == 0x80002800:  # SiS 85C496 (0:5.0)
             if reg <= 0x45 and 0x44 < reg + size and cfg is not None:
@@ -3576,9 +3591,16 @@ class BiosEmulator:
                 self.smbus_next = (offset + 1) & 0xFF
             self.smbus[5] = eeprom[offset]
             self.smbus[6] = eeprom[(offset + 1) & 0xFF]
+            if address == GL520_ADDRESS and offset == 0x07:  # the fan counts
+                misc = eeprom[0x0F]
+                self.smbus[5], self.smbus[6] = (
+                    min(0xFF, round(480_000 / (rpm << (misc >> shift & 3))))
+                    for rpm, shift in zip(FAN_RPM, (6, 4))
+                )
         elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
             assert isinstance(eeprom, bytearray)
-            eeprom[offset] = self.smbus[5]
+            if address != GL520_ADDRESS or offset not in GL520:  # (readings: the chip's own)
+                eeprom[offset] = self.smbus[5]
         if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)

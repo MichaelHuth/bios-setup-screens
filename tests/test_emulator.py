@@ -100,6 +100,31 @@ def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine(
     assert 1400 < struct.unpack("<H", memory(emu, OUT, 2))[0] < 2250
 
 
+def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VIA south bridge's ID)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    # the VT82C596's SMBus base at function 3, 80h (PCChips M768VMR: 5F00h)
+    emu.pci_addr = 0x80000000 | 7 << 11 | 3 << 8 | 0x80
+    emu._pci_write(0xCFC, 2, 0x5F01)
+    assert emu.smbus_base == 0x5F00
+
+    def transfer(address: int, command: int, protocol: int, data: int = 0) -> tuple[int, int]:
+        emu._smbus_write(0, 0xFF)
+        emu._smbus_write(4, address)
+        emu._smbus_write(3, command)
+        emu._smbus_write(5, data)
+        emu._smbus_write(2, 0x40 | protocol << 2)
+        return emu.smbus[5], emu.smbus[6]
+
+    assert transfer(0x5B, 0x00, 2)[0] == 0x20  # chip ID
+    transfer(0x5A, 0x0F, 2, 0x54)  # fan divisors 2 and 2
+    transfer(0x5A, 0x04, 2, 0x00)  # (a reading is not written)
+    assert transfer(0x5B, 0x04, 2)[0] - 130 == 38  # C
+    fan1, fan2 = transfer(0x5B, 0x07, 3)  # the word of the fan counts
+    assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
