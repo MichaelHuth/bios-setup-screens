@@ -194,6 +194,15 @@ HWMON_VOLTAGES = {0x20: 0x64, 0x21: 0x9C, 0x22: 0xCE, 0x23: 0xBA, 0x24: 0xBB}
 # setup) or 26h (AMIBIOS 7's), 5 V standby at 27h, the battery at 28h, temperatures in degrees
 # at 29h-2Bh. Winbond has a temperature at 27h and fan counts at 28h-2Ah instead.
 HWMON_ITE = {0x25: 0x3D, 0x26: 0xEE, 0x27: 0xBA, 0x28: 0xBC, 0x29: 0x26, 0x2A: 0x20, 0x2B: 0x2D}
+# Fans turning (CPU, system, third): their counts (ITE 0Dh-0Fh, Winbond 28h-2Ah) are
+# 1,350,000 / (RPM x divisor), with the divisors the BIOS set (ITE 0Bh; Winbond 47h, 4Bh and
+# 5Dh, kept with their power-on values); all ones read as stopped fans (0 RPM)
+FAN_RPM = (4500, 3000, 2700)
+# The layout is chosen by the first register the BIOS selects that only one of the two has
+# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later)
+HWMON_ITE_ONLY = frozenset((0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x13, 0x14, 0x15, 0x16, 0x17))
+HWMON_WINBOND_ONLY = frozenset((0x47, 0x4E, 0x4F))
+HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
     0x2440: {
@@ -1134,7 +1143,6 @@ class BiosEmulator:
     ali_alias_hook: int | None
     dram_hook: int | None
     dram_saved: bytes | None
-    hwmon_polled: int | None
     shadow_before: list[bool] | None
     prefetched: tuple[int, bytes, bytes] | None
     hw_keys: list[int]
@@ -1423,8 +1431,8 @@ class BiosEmulator:
         self.hwmon_index, self.apm_status = 0xFF, 0
         # Headland HT101/102 (286 boards, about 1988): index at 1EDh, data at 1EFh, read back
         self.headland_index, self.headland = 0, bytearray(256)
-        self.hwmon_polled, self.hwmon_polls = None, 0  # (the fan count polled on and on)
-        self.hwmon_winbond = False  # (the BIOS chose a register only Winbond's chips have)
+        self.hwmon_divisors = dict(HWMON_DIVISORS)
+        self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
         self.reset_control = 0  # port CF9h
         self.umc = self.pci_devices.get((16, 0), b"")[0:2] == bytes.fromhex("6010")
         if self.umc:  # after reset: reads from the ROM, writes to the RAM behind it
@@ -3714,15 +3722,10 @@ class BiosEmulator:
             value = HWMON_VOLTAGES.get(index, None if self.hwmon_winbond else HWMON_ITE.get(index))
             if value is not None:
                 return value
-        if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in (0x28, 0x29, 0x2A):
-            # Winbond fan counts read FFh (stopped) as before, unless the same one is polled
-            # on and on: MSI MS-6380E waits at a "CPU fan" prompt reading Y/N from port 60h
-            # while it reads FFh (other chips keep temperatures there: setup pages stay as
-            # they were)
-            self.hwmon_polls = self.hwmon_polls + 1 if self.hwmon_index == self.hwmon_polled else 0
-            self.hwmon_polled = self.hwmon_index
-            if self.hwmon_polls > 1000:
-                return 0x80
+            if index in self.hwmon_divisors:
+                return self.hwmon_divisors[index]
+            if (count := self._fan_count(index)) is not None:
+                return count
         if port == 0x800 and self.mylex_counter:  # (MVE486: the memory test's byte count,
             return uc.reg_read(UC_X86_REG_EBX) >> 16 & 0xFF  # compared with its own in EBX)
         if port == 0x2A and self.um8498_phase == 2:
@@ -4058,6 +4061,20 @@ class BiosEmulator:
         elif op.size == 4 and (edx << 32 | eax) // divisor > 0xFFFFFFFF:
             uc.reg_write(UC_X86_REG_EDX, 0)
 
+    def _fan_count(self, index: int) -> int | None:
+        """A turning fan's count at hardware-monitor register index (None: not a fan's)."""
+        div = self.hwmon_divisors
+        if self.hwmon_winbond and 0x28 <= index <= 0x2A:
+            fan = index - 0x28
+            low = (div[0x47] >> 4 + 2 * fan if fan < 2 else div[0x4B] >> 6) & 3
+            shift = low | (div[0x5D] >> 5 + fan & 1) << 2
+        elif not self.hwmon_winbond and 0x0D <= index <= 0x0F:
+            fan = index - 0x0D
+            shift = div[0x0B] >> 3 * fan & 7 if fan < 2 else 3 if div[0x0B] & 0x40 else 1
+        else:
+            return None
+        return min(0xFE, max(1, round(1_350_000 / (FAN_RPM[fan] << shift))))
+
     def _cpuid(self, uc: Uc, _user: object) -> int:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)
         as on the board's own CPUs; the emulated CPU answers everything else."""
@@ -4171,7 +4188,10 @@ class BiosEmulator:
         if port == 0x295:
             self.hwmon_index = value & 0xFF
             # (Winbond: fan divisors 47h, bank select 4Eh, vendor ID 4Fh)
-            self.hwmon_winbond = self.hwmon_winbond or value & 0x7F in (0x47, 0x4E, 0x4F)
+            if self.hwmon_winbond is None and value & 0x7F in HWMON_ITE_ONLY | HWMON_WINBOND_ONLY:
+                self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
+        if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
+            self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
         if 0xC000 <= port <= 0xCFFF and self.pci_cse & 0xF0:
             if self.pam_valid and not self.pci_used:
                 self._shadow_change(lambda: setattr(self, "pci_used", True))

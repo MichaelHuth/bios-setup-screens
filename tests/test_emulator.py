@@ -121,12 +121,36 @@ def test_the_hardware_monitor_reads_normal_voltages() -> None:
     assert memory(emu, OUT, 4) == bytes((0x64, 0xBB, 0xBC, 0x26))  # 1.6 V, 12 V, 3 V, 38 degrees
 
 
+def hwmon_write(index: int, value: int) -> bytes:
+    """mov dx,295h ; mov al,index ; out dx,al ; inc dx ; mov al,value ; out dx,al"""
+    return b"\xba\x95\x02\xb0" + bytes((index,)) + b"\xee\x42\xb0" + bytes((value,)) + b"\xee"
+
+
 def test_a_winbond_monitor_keeps_its_own_registers_above_24h() -> None:
-    # once the BIOS chooses Winbond's bank select (4Eh), 28h is a fan count again (FFh: stopped)
+    # once the BIOS chooses Winbond's bank select (4Eh), 28h is a fan count again: the CPU
+    # fan at 4500 RPM (divisor 2); fan 2 with divisor 4 set in 47h: 3000 RPM
     code = DS0 + hwmon_read(0x4E, OUT) + hwmon_read(0x20, OUT) + hwmon_read(0x28, OUT + 1)
+    code += hwmon_write(0x47, 0x9F) + hwmon_read(0x29, OUT + 2) + hwmon_read(0x47, OUT + 3)
     emu = bios_emu.BiosEmulator(rom(code + HALT))
     emu.run(0xF000, 0xFFF0)
-    assert memory(emu, OUT, 2) == b"\x64\xff"
+    assert memory(emu, OUT, 4) == bytes((0x64, 150, 112, 0x9F))
+
+
+def test_an_ite_monitor_counts_its_fans_with_the_divisors_set() -> None:
+    code = DS0 + hwmon_read(0x0B, OUT) + hwmon_read(0x0D, OUT + 1) + hwmon_read(0x0F, OUT + 2)
+    code += hwmon_write(0x0B, 0x52) + hwmon_read(0x0D, OUT + 3) + hwmon_read(0x0F, OUT + 4)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    # 09h: fans 1 and 2 divided by 2; 52h: fan 1 by 4, fan 3 by 8 (2700 RPM)
+    assert memory(emu, OUT, 5) == bytes((0x09, 150, 250, 75, 62))
+
+
+def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
+    # ITE's fan divisors first, then Winbond's bank select: 28h stays ITE's battery
+    code = DS0 + hwmon_read(0x0B, OUT) + hwmon_write(0x4E, 0x80) + hwmon_read(0x28, OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
 
 
 def test_halt_with_interrupts_off() -> None:
