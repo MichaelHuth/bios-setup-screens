@@ -1226,6 +1226,7 @@ class BiosEmulator:
         # bit 5 of logical device 7's register F0h and waits until it reads clear.
         self.sio_index, self.sio_regs = {0x2E: 0, 0x4E: 0}, {}
         self.ite_monitor = 0  # an ITE environment controller's base (_ite_monitor_base)
+        self.ec_index: int | None = None  # the index written to ECh (_e000_rom)
         # I/O bases taken from configuration registers, looked up on every port access: kept
         # until a configuration write or the next slice (code here may set registers too)
         self.io_bases: dict[str, Any] = {}
@@ -4180,6 +4181,18 @@ class BiosEmulator:
             return port, None, index
         return port, self.sio_regs.get((port, None, 0x07), 0), index
 
+    def _e000_rom(self, value: int) -> None:
+        """Register 11h through ECh/EDh (the chipset of the 1998 Award 3.20 images fts...d824
+        and fts...d4hvl: AAh, then a far jump into E000 to go on there while it copies
+        E000 to F000): two bits for each 16 KB of E0000-EFFFF, 10b shows the ROM's top
+        64 KB, the BIOS's own segment, there as well."""
+        top = bytes(self.uc.mem_read(0x100000000 - 0x10000, 0x10000))
+        for block in range(4):
+            if value >> 2 * block & 3 == 2:
+                part = top[block * 0x4000 : (block + 1) * 0x4000]
+                self.uc.mem_write(0xE0000 + block * 0x4000, part)
+        _flush_tb(self.uc)
+
     def _ite_monitor_base(self, config: int) -> None:
         """The base of an ITE environment controller (logical device 4: 60h-61h, on with 30h
         bit 0) as set through the config port: its address and data ports (base + 5 and 6) are
@@ -4400,6 +4413,13 @@ class BiosEmulator:
         return patched
 
     def _out(self, uc: Uc, port: int, size: int, value: int, _user: object) -> None:
+        if port == 0xEC and size == 1:
+            self.ec_index = value & 0xFF
+            return
+        if port == 0xED and self.ec_index == 0x11:
+            self.ec_index = None
+            self._e000_rom(value & 0xFF)
+            return
         if port in DELAY_PORTS:  # (nothing there: delays, millions in a row)
             return
         if self.flash_low and port in (0x3F0, 0x3F1):

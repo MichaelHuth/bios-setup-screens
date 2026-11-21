@@ -209,6 +209,17 @@ def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
         assert emu.stopped_reason == "instruction limit reached" and emu.beeps == 0
 
 
+def test_register_11h_through_ech_shows_the_bios_segment_at_e0000() -> None:
+    # mov al,11h ; out ECh,al ; mov al,AAh ; out EDh,al ; then read E000:E000 (the code here)
+    code = DS0 + b"\xb0\x11\xe6\xec\xb0\xaa\xe6\xed"
+    code += b"\xb8\x00\xe0\x8e\xd8\xa0\x00\xe0"  # mov ax,E000h ; mov ds,ax ; mov al,[E000h]
+    code += b"\x31\xdb\x8e\xdb" + store_al(OUT) + HALT  # xor bx,bx ; mov ds,bx ; mov [OUT],al
+    image = b"Z" * 0x10000 + rom(code)  # (128 KB: its lower half is not the code)
+    emu = bios_emu.BiosEmulator(image)
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == code[:1]  # (F000:E000, the code's first byte, at E000:E000)
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
