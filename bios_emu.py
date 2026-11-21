@@ -4186,11 +4186,13 @@ class BiosEmulator:
         and fts...d4hvl: AAh, then a far jump into E000 to go on there while it copies
         E000 to F000): two bits for each 16 KB of E0000-EFFFF, 10b shows the ROM's top
         64 KB, the BIOS's own segment, there as well."""
+        blocks = [block for block in range(4) if value >> 2 * block & 3 == 2]
+        if not blocks:  # (other boards' 11h: F5h, F0h - jet-fm27c512)
+            return
         top = bytes(self.uc.mem_read(0x100000000 - 0x10000, 0x10000))
-        for block in range(4):
-            if value >> 2 * block & 3 == 2:
-                part = top[block * 0x4000 : (block + 1) * 0x4000]
-                self.uc.mem_write(0xE0000 + block * 0x4000, part)
+        for block in blocks:
+            part = top[block * 0x4000 : (block + 1) * 0x4000]
+            self.uc.mem_write(0xE0000 + block * 0x4000, part)
         _flush_tb(self.uc)
 
     def _ite_monitor_base(self, config: int) -> None:
