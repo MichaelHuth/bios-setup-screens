@@ -146,6 +146,13 @@ def test_a_post_polling_a_cmos_register_nothing_changes_stops() -> None:
     assert emu.stopped_reason == "polling CMOS register 7Eh"
 
 
+def test_the_smbus_start_bit_reads_0() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    emu.smbus_base = 0x540
+    emu._smbus_write(2, 0x48)  # start a byte-data read
+    assert emu._in(emu.uc, 0x542, 1, None) == 0x08
+
+
 def test_a_post_beeping_for_ever_stops() -> None:
     # mov al,3 ; out 61h,al (speaker on) ; mov al,0 ; out 61h,al ; jmp to the start
     emu = bios_emu.BiosEmulator(rom(b"\xb0\x03\xe6\x61\xb0\x00\xe6\x61\xeb\xf6"))

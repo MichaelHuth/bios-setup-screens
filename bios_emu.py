@@ -4030,6 +4030,8 @@ class BiosEmulator:
                 if self.smbus_idle > 64:
                     self.smbus[0] |= self.smbus_result
                     self.smbus_result = 0
+            if port - self.smbus_base == 2:  # control: START (bit 6) is write-only, reads 0
+                return self.smbus[2] & ~0x40  # (w1641v11's AMI waits for it to clear)
             return self.smbus[port - self.smbus_base]
         if 0x481 <= port <= 0x48F or (
             self.dma_pages_ext and (0x401 <= port <= 0x40F or 0x4C1 <= port <= 0x4CF)
