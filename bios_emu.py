@@ -3870,6 +3870,43 @@ class BiosEmulator:
             if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
                 self.port61 ^= 0x20
             return self.port61
+        if port == 0x40:  # (the timer's counters next: wait loops read them)
+            if self.pit0_latch is None:  # not latched: read the running counter
+                self.pit0_count = (self.pit0_count - 0x25) & 0xFFFF
+                counter = self.pit0_count
+            else:
+                counter = self.pit0_latch
+            if self.pit0_access in (1, 2):  # one byte only (Quadtel 3.05 tests each channel
+                self.pit0_latch = None  # by reading its high byte until the counter wraps)
+                return counter & 0xFF if self.pit0_access == 1 else counter >> 8
+            self.pit0_read_high = not self.pit0_read_high
+            if not self.pit0_read_high:
+                self.pit0_latch = None
+                return counter >> 8
+            return counter & 0xFF
+        if port == 0x41:
+            if self.pit1_latch is None:
+                self._pit1_step()
+            counter = self.pit1_count if self.pit1_latch is None else self.pit1_latch
+            if self.pit1_access == 2:
+                self.pit1_latch = None
+                return counter >> 8
+            if self.pit1_access == 3:
+                self.pit1_read_high = not self.pit1_read_high
+                if self.pit1_read_high:
+                    return counter & 0xFF
+            self.pit1_latch = None
+            return counter >> 8 if self.pit1_access == 3 else counter & 0xFF
+        if port == 0x42:
+            self._pit_used()
+            counter = self._pit_value() if self.pit2_latch is None else self.pit2_latch
+            if self.pit2_access in (1, 2):
+                self.pit2_latch = None
+                return counter & 0xFF if self.pit2_access == 1 else counter >> 8
+            self.pit_read_high = not self.pit_read_high
+            if not self.pit_read_high:
+                self.pit2_latch = None
+            return counter >> 8 if not self.pit_read_high else counter & 0xFF
         # HP's AMIBIOS 7 boards (BCM IN845 Rev 1.14) read a hardware-monitor data port
         # and take all ones for a stopped CPU fan, then halt; 00 is "no reading yet"
         if port == 0x0A59:
@@ -4059,43 +4096,6 @@ class BiosEmulator:
             return value
         if port == 0x60:  # read again: the output buffer still holds the last byte
             return self.kbc_last
-        if port == 0x40:
-            if self.pit0_latch is None:  # not latched: read the running counter
-                self.pit0_count = (self.pit0_count - 0x25) & 0xFFFF
-                value = self.pit0_count
-            else:
-                value = self.pit0_latch
-            if self.pit0_access in (1, 2):  # one byte only (Quadtel 3.05 tests each channel
-                self.pit0_latch = None  # by reading its high byte until the count wraps)
-                return value & 0xFF if self.pit0_access == 1 else value >> 8
-            self.pit0_read_high = not self.pit0_read_high
-            if not self.pit0_read_high:
-                self.pit0_latch = None
-                return value >> 8
-            return value & 0xFF
-        if port == 0x41:
-            if self.pit1_latch is None:
-                self._pit1_step()
-            value = self.pit1_count if self.pit1_latch is None else self.pit1_latch
-            if self.pit1_access == 2:
-                self.pit1_latch = None
-                return value >> 8
-            if self.pit1_access == 3:
-                self.pit1_read_high = not self.pit1_read_high
-                if self.pit1_read_high:
-                    return value & 0xFF
-            self.pit1_latch = None
-            return value >> 8 if self.pit1_access == 3 else value & 0xFF
-        if port == 0x42:
-            self._pit_used()
-            value = self._pit_value() if self.pit2_latch is None else self.pit2_latch
-            if self.pit2_access in (1, 2):
-                self.pit2_latch = None
-                return value & 0xFF if self.pit2_access == 1 else value >> 8
-            self.pit_read_high = not self.pit_read_high
-            if not self.pit_read_high:
-                self.pit2_latch = None
-            return value >> 8 if not self.pit_read_high else value & 0xFF
         if port == 0x92:
             return 2 if self.a20_fast else 0
         if self.smbus_base is not None and 0 <= port - self.smbus_base < 16:
