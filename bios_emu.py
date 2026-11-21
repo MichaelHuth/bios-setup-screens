@@ -105,6 +105,7 @@ TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_i
 # refresh toggles (port 61h bit 4, one per 15 us) in one 55 ms timer tick: a POST counting them
 # between two timer interrupts expects about 1820 cycles (Award 286: "REFRESH TIMING ERROR")
 REFRESH_PER_TICK = 3640
+CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -1439,6 +1440,9 @@ class BiosEmulator:
         # IRQ 0 can come (refresh_cut)
         self.refresh_toggles, self.refresh_cut = 0, False
         self.rtc_reads = 0
+        # reads of one CMOS register above the clock's with no CMOS write between: a POST
+        # waiting there for what code left out sets (an SMI handler: Gigabyte 6VTX polls 7Eh)
+        self.cmos_polled, self.cmos_polls = -1, 0
         self.stopped_reason = ""
         self._init_bda()
         self._clear_screen(0x07)
@@ -3883,7 +3887,15 @@ class BiosEmulator:
                 self.rtc_reads += 0 if self.rtc_frozen else 1
                 sec = (self.rtc_reads // 20) % 60
                 return (sec // 10) << 4 | sec % 10
-            return self.cmos[self.cmos_index & 0x7F]
+            index = self.cmos_index & 0x7F
+            if index >= 0x0E:  # (no clock register: only a program changes it)
+                if index != self.cmos_polled:
+                    self.cmos_polled, self.cmos_polls = index, 0
+                self.cmos_polls += 1
+                if self.cmos_polls > CMOS_POLLS:
+                    self.stopped_reason = f"polling CMOS register {index:02X}h"
+                    uc.emu_stop()
+            return self.cmos[index]
         if port in (0x73, 0x75):
             return self.cmos_hi[self.cmos_hi_index]
         pm = self._pm_offset(port)
@@ -4440,6 +4452,7 @@ class BiosEmulator:
             self.cmos_hi[self.cmos_hi_index] = value & 0xFF
         elif port == 0x71:
             self.cmos[self.cmos_index & 0x7F] = value & 0xFF
+            self.cmos_polls = 0
             if self.cmos_index & 0x7F == 0x0B and value & 0x40 and self.timer_irq:
                 self.rtc_pending = True  # periodic interrupt on: the first one comes soon
                 self._want_hook("irq0_hook")

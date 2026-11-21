@@ -139,6 +139,13 @@ def test_a_winbond_monitor_on_the_smbus() -> None:
     assert [read(0x2D, r) for r in (0x00, 0x20)] == [0x20, 0x64]
 
 
+def test_a_post_polling_a_cmos_register_nothing_changes_stops() -> None:
+    # mov al,7Eh ; out 70h,al ; in al,71h ; jmp to the start: nothing here sets 7Eh
+    emu = bios_emu.BiosEmulator(rom(b"\xb0\x7e\xe6\x70\xe4\x71\xeb\xf8"), max_instructions=10**8)
+    emu.run(0xF000, 0xFFF0)
+    assert emu.stopped_reason == "polling CMOS register 7Eh"
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
