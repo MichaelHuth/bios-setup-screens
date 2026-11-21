@@ -15481,7 +15481,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "a1660v13-637249f9e8b7e962537538.exe.bin",
   "screens": 9,
-  "text": "bfe7bc686d7f8fb3"
+  "text": "96d30dfa4988af6a"
  },
  "80e481f160279c14bbc35bce98110c78f3d939d40176633acec1b0c2a8b96b29": {
   "bios": "DTK (Datatech) BIOS with its ROM SETUP PROGRAM, captured by ",
@@ -24031,7 +24031,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "nr120102-682ebc7c5017c592515800.zip",
   "screens": 8,
-  "text": "3a5bc505e4e9e477"
+  "text": "f03d54ad94afb949"
  },
  "c66a92a4d03a139ade9201021eb2d0b7b69849ea57d4bba542878ff9733e812d": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
