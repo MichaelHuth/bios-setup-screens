@@ -4476,8 +4476,10 @@
   "text": "1088617131f28ea6"
  },
  "25f7d100f94a95031ac70bc79e594d24669053b20cfffd3d5f67269454309c98": {
+  "bios": "AMIBIOS 7 with the tabbed AMIBIOS SETUP UTILITY (text mode),",
   "name": "t815epu-63d2dca6761d0730925010.zip",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "792e9fa5a82ccc54"
  },
  "25fc291ded320fe44301abbda5f6420a29a023418ede824013c04f8dd6860af5": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
