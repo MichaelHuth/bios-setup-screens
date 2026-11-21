@@ -201,6 +201,17 @@ class Direct:
             if mine[0:4] == theirs[0:4] and theirs[0x74] & 1:
                 mine[0x70:0x75] = theirs[0x70:0x75]
                 emu.via_hwmon[:] = posted.via_hwmon
+        # the SMBus host as POST set it (base and enable bits; nr120102: an ICH3's at C00h, a
+        # Winbond monitor at 2Dh behind it)
+        for key, bar in bios_emu.SMBUS_FUNCTIONS.items():
+            mine_f = emu.pci_devices.get(key)
+            theirs_f = posted.devices.get(key) if posted is not None else None
+            if mine_f is None or theirs_f is None or mine_f[0:4] != theirs_f[0:4]:
+                continue
+            if base := int.from_bytes(bytes(theirs_f[bar : bar + 2]), "little") & 0xFFF0:
+                for reg in (bar, bar + 1, 0x40, 0xD2):  # (enable: ICH 40h, VIA D2h)
+                    mine_f[reg] = theirs_f[reg]
+                emu.smbus_base = base
         # an ITE environment controller the Setup Server reads at its own base (mov dx,805h ;
         # out dx,al: PCChips' ITE boards at 800h), which POST sets in logical device 4
         ite = ITE_MONITOR_INDEX.search(m1["data"])

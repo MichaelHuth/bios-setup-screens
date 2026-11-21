@@ -223,6 +223,9 @@ VIA_HWMON |= {0x25: 0xC5, 0x26: 0xC3, 0x47: 0x5F}
 # (23.75 mV steps); the fan counts of FAN_RPM in the word at 07h (fan 1 first), with the
 # divisors of 0Fh bits 6-7 and 4-5 (480000 / (count * divisor) RPM)
 GL520_ADDRESS = 0x2D
+# a Winbond monitor on the SMBus (Intel 845 boards' AMI Hi-Flex: nr120102 at 2Ch), from 20h on
+# answered as the one at 295h in Winbond's layout (_smbus_winbond)
+WINBOND_ADDRESSES = (0x2C, 0x2D)
 GL520 = {0x00: 0x20, 0x04: 0xA8, 0x0D: 0x54, 0x0E: 0xA2, 0x13: 0x98, 0x14: 0xAE, 0x15: 0xD2}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
@@ -1234,6 +1237,8 @@ class BiosEmulator:
         gl520 = self.smbus_devices[GL520_ADDRESS] = bytearray(256)
         for reg, value in GL520.items():
             gl520[reg] = value
+        gl520[0x4E] = 0x80  # (a Winbond's bank select there, as after power-on)
+        self.smbus_devices[0x2C] = bytearray(0x4E) + b"\x80" + bytearray(0xB1)  # (Winbond)
         self.smbus_result, self.smbus_idle = 0, 0  # (see _in: an end bit cleared too early)
         self.pam_base = 0x90 if host_id in PAM_AT_90 else 0x59
         self.vga_card_rom = None
@@ -3603,10 +3608,15 @@ class BiosEmulator:
                     min(0xFF, round(480_000 / (rpm << (misc >> shift & 3))))
                     for rpm, shift in zip(FAN_RPM, (6, 4))
                 )
+            elif address in WINBOND_ADDRESSES and offset >= 0x20:  # a Winbond's registers
+                self.smbus[5] = self._smbus_winbond(offset, eeprom)
+                self.smbus[6] = self._smbus_winbond(offset + 1 & 0xFF, eeprom)
         elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
             assert isinstance(eeprom, bytearray)
             if address != GL520_ADDRESS or offset not in GL520:  # (readings: the chip's own)
                 eeprom[offset] = self.smbus[5]
+            if address in WINBOND_ADDRESSES and offset >= 0x20 and offset in self.hwmon_divisors:
+                self.hwmon_divisors[offset] = self.smbus[5]
         if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)
@@ -4156,6 +4166,19 @@ class BiosEmulator:
         else:
             return None
         return min(0xFE, max(1, round(1_350_000 / (FAN_RPM[fan] << shift))))
+
+    def _smbus_winbond(self, reg: int, regs: bytes | bytearray) -> int:
+        """A Winbond monitor's register on the SMBus at 2Ch or 2Dh, from 20h on (at 2Dh beside
+        the GL520SM's below; each BIOS reads its own): what the 295h model answers in Winbond's
+        layout, the vendor ID in 4Fh by the bank select 4Eh (bit 7: high byte 5Ch, else A3h)."""
+        if reg == 0x4F:
+            return 0x5C if regs[0x4E] & 0x80 else 0xA3
+        value = HWMON_VOLTAGES.get(reg, HWMON_WINBOND.get(reg, self.hwmon_divisors.get(reg)))
+        if value is None:
+            saved, self.hwmon_winbond = self.hwmon_winbond, True
+            value = self._fan_count(reg)
+            self.hwmon_winbond = saved
+        return regs[reg] if value is None else value
 
     def _cpuid(self, uc: Uc, _user: object) -> int:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)

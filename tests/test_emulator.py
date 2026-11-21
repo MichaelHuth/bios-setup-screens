@@ -125,6 +125,20 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
 
 
+def test_a_winbond_monitor_on_the_smbus() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+
+    def read(address: int, command: int) -> int:
+        for reg, value in ((0, 0xFF), (4, address << 1 | 1), (3, command), (2, 0x48)):
+            emu._smbus_write(reg, value)
+        return emu.smbus[5]
+
+    # at 2Ch: Vcore and the temperature as at 295h, the vendor ID's high byte (bank 80h);
+    # at 2Dh the GL520SM's ID below 20h and the same Winbond registers from 20h on
+    assert [read(0x2C, r) for r in (0x20, 0x27, 0x4F)] == [0x64, 38, 0x5C]
+    assert [read(0x2D, r) for r in (0x00, 0x20)] == [0x20, 0x64]
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
