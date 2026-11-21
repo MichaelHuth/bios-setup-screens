@@ -57,6 +57,19 @@ CONTENT_PAGES = (
     ("Security", ("Password",)),
     ("PC Health Status", ("Temperature", "FAN Speed")),
 )
+# and last, pages the menu bar has no name for: Award's own titles of the pages they are (by
+# marks of no other page among their first three entries)
+AWARD_PAGES = (
+    ("Integrated Peripherals", ("OnChip IDE Device", "OnChip PCI Device", "Onboard Device")),
+    ("Integrated Peripherals", ("Onboard PCI Device", "IDE Function Setup")),
+    ("PnP/PCI Configurations", ("Resources Controlled By", "IRQ Resources", "IRQ Select")),
+    ("Frequency/Voltage Control", ("Spread Spectrum", "Auto Detect DIMM/PCI Clk")),
+    ("Frequency/Voltage Control", ("Auto Detect PCI Clk",)),
+)
+# pages still unnamed after that: the menu bar's Advanced tab has entries that open these
+# next to options of its own (boot devices); a page that opens three or more pages with them
+# is a main menu or a page of all items, and stays unnamed
+ADVANCED_ENTRIES = frozenset(("Advanced BIOS Features", "Advanced Chipset Features"))
 
 
 def language_module(image: bytes) -> bytes | None:
@@ -425,7 +438,45 @@ class Award6:
                 and all(self._target(e) for _, e in self.items[page])
             ):
                 titles[page] = "Advanced"
+        for page in sorted(self.items):
+            if page not in titles and (name := self._name_by_entries(page, bar, titles)):
+                titles[page] = name
         return {p: titles.get(p, f"Page {p}") for p in sorted(self.items)}
+
+    def _name_by_entries(self, page: int, bar: list[str], titles: dict[int, str]) -> str:
+        """A page's name by its first three entries rather than only the first (the HW
+        Monitor tab starts with Case Open Warning), or the Advanced tab; empty if none. Not
+        Defaults: its marks also stand among other items."""
+        entries = [(self._label(e).strip(" :"), self._target(e)) for _, e in self.items[page]]
+        opens = {t: label for label, t in entries if t in self.items and t != page}
+        if ADVANCED_ENTRIES & set(opens.values()):
+            if (
+                ("Advanced" in bar or not bar)
+                and "Advanced" not in titles.values()
+                and not any("Exit" in label for label, _ in entries)
+            ):
+                return "Advanced"
+            if len(opens) >= 3:
+                return ""
+        head = [label.lower() for label, _ in entries if label][:3]
+        names = BAR_PAGES + (("Boot", ("Boot Device", "Boot Priority")),) if bar else CONTENT_PAGES
+        for name, marks in names:
+            # (Exit: also "Save Change and Exit")
+            more: tuple[str, ...] = ("and Exit",) if name == "Exit" else ()
+            if (
+                name != "Defaults"
+                and (name in bar or not bar)
+                and name not in titles.values()
+                and any(m.lower() in label for label in head for m in marks + more)
+            ):
+                return name
+        words = [" ".join(label.split()) for label in head]  # (padded: "PCI Slot 1  IRQ")
+        for name, marks in AWARD_PAGES:
+            if name not in titles.values() and any(
+                m.lower() in label for label in words for m in marks
+            ):
+                return name
+        return ""
 
     def _bar_table(self) -> bytes:
         """The language module's table of menu bar names, 16 bytes each (HP), or nothing."""

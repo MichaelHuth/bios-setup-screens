@@ -12,7 +12,9 @@ import pytest
 
 import ami
 import award6_setup
+import award_emu_setup
 import award_setup
+import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
 import uefi_setup
@@ -323,3 +325,91 @@ def test_award6_option_texts_skip_their_script_commands() -> None:
     bios._in_language = lambda word: True  # type: ignore[method-assign]
     assert bios._option_text(0x0000, 0) == b"CPU Default"
     assert bios._option_text(0x0000, 1) == b"1.50 V"
+
+
+def test_early_award_version_is_found_with_a_small_or_capital_v() -> None:
+    for version in (b"v4.50", b"V3.03 NFS", b"Version V3.13c"):
+        rom = b"Award Software  286 Modular BIOS " + version + b" SETUP"
+        assert award_emu_setup.is_early_award(rom), version
+    assert not award_emu_setup.is_early_award(b"Award Modular BIOS V6.00PG")
+
+
+def test_award6_oem_pages_are_named_by_their_first_entries() -> None:
+    # an OEM menu bar's pages that no entry opens: entries as (label, page it opens)
+    pages = {
+        1: [("Date (mm:dd:yy)", 0), ("Time (hh:mm:ss)", 0)],
+        3: [("Virus Warning", 0)],
+        4: [("DRAM Timing", 0)],
+        5: [("Video Off Method", 0)],
+        8: [
+            ("First Boot Device", 0),
+            ("Advanced BIOS Features", 3),
+            ("Advanced Chipset Features", 4),
+        ],
+        13: [("Case Open Warning", 0), ("CPU Warning Temperature", 0), ("CPU FAN Speed", 0)],
+        14: [("Init Display First", 0), ("OnChip IDE Device", 0), ("Onboard Device", 0)],
+        17: [("PCI Slot 1  IRQ Select", 0), ("PCI Slot 2  IRQ Select", 0)],
+        21: [  # (a page of all items: Power Management Setup is not its name)
+            ("Advanced BIOS Features", 3),
+            ("Advanced Chipset Features", 4),
+            ("Power Management Setup", 5),
+            ("ACPI Function", 0),
+        ],
+    }
+    entries = {(page, i): entry for page, items in pages.items() for i, entry in enumerate(items)}
+    bios = object.__new__(award6_setup.Award6)
+    bios.items = {
+        page: [(i, (page, i)) for i in range(len(items))] for page, items in pages.items()
+    }
+    bios.pages_only = True
+    bar = ("Main", "Advanced", "Power", "Defaults", "Exit", "HW Monitor")
+    table = b"".join(n.encode().ljust(16, b"\0") for n in bar) + b"X"
+    bios._bar_table = lambda: table  # type: ignore[method-assign]
+    bios._label = lambda e: entries[e][0]  # type: ignore[method-assign]
+    bios._target = lambda e: entries[e][1]  # type: ignore[method-assign]
+    assert bios.page_titles() == {
+        1: "Main",
+        3: "Advanced BIOS Features",
+        4: "Advanced Chipset Features",
+        5: "Power Management Setup",
+        8: "Advanced",
+        13: "HW Monitor",
+        14: "Integrated Peripherals",  # (Award's own names: the bar has none for them)
+        17: "PnP/PCI Configurations",
+        21: "Page 21",
+    }
+
+
+def test_hiflex_direct_start_takes_posts_monitor_setup() -> None:
+    def call(at: int, to: int) -> bytes:
+        return b"\xe8" + struct.pack("<h", to - (at + 3))
+
+    # RunTime: a write routine with the index in AH, called by a run of mov ax,imm ; call
+    runtime = bytearray(bytes.fromhex("9cfa52ba950286c4eeeb0086e042ee5a9dc3"))
+    for value in (0x1370, 0x50FF, 0x0B1B):
+        runtime += b"\xb8" + struct.pack("<H", value) + call(len(runtime) + 3, 0)
+    # a read routine (in al,dx) is not a write routine: calls into it are left alone
+    reader = len(runtime)
+    runtime += bytes.fromhex("ba95028ac4ee42ecc3")
+    for value in (0x0B00, 0x0B01, 0x0B02):
+        runtime += b"\xb8" + struct.pack("<H", value) + call(len(runtime) + 3, reader)
+    writes = hfjump_setup.monitor_writes(bytes(runtime), 0)
+    assert writes == [(0x13, 0x70), (0x50, 0xFF), (0x0B, 0x1B)]
+    # POST, loaded at offset 100h: the index in AL, a table walked by mov si ; mov cx ;
+    # mov ax,cs:[si]
+    post = bytearray(bytes.fromhex("5152ba9502ee4286c4ee5a59c3"))
+    table = 40
+    post += b"\xbe" + struct.pack("<H", 0x100 + table) + bytes.fromhex("b903002e8b04")
+    post += call(len(post), 0) + bytes.fromhex("83c602e2f5c3")
+    post = post.ljust(table, b"\x90") + bytes((0x13, 0x70, 0x0B, 0x5B, 0x5D, 0x00))
+    writes = hfjump_setup.monitor_writes(bytes(post), 0x100)
+    assert writes == [(0x13, 0x70), (0x0B, 0x5B), (0x5D, 0x00)]
+    # a VT82C686A board's: (index, value) words, then mov dh,0Ch ; mov dl,al ; mov al,ah ; out
+    via = bytearray(bytes((0x2B, 0xFF, 0x2C, 0x00, 0x47, 0xF0)))
+    routine = len(via)
+    via += bytes.fromhex("5251b60c8ad08ac4eee6eb595ac3")
+    via += b"\xbe\x00\x00\xb9\x03\x00\x2e\x8b\x04" + call(len(via) + 9, routine)
+    via += bytes.fromhex("83c602e2f5c3")
+    assert hfjump_setup.monitor_writes(bytes(via), 0) == []  # (not the 295h routine)
+    writes = hfjump_setup.monitor_writes(bytes(via), 0, hfjump_setup.VIA_MONITOR_WRITE)
+    assert writes == [(0x2B, 0xFF), (0x2C, 0x00), (0x47, 0xF0)]

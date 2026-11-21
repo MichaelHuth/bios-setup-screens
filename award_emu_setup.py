@@ -47,8 +47,9 @@ def is_early_award(rom: bytes) -> bool:
         return False
     return (
         b"Award" in rom
-        # (an OEM's V before the number: Hyundai Super-286E, "Version V3.13c")
-        and re.search(rb"Modular BIOS (?:v|Version )V?[34]\.\d", rom) is not None
+        # (an OEM's V before the number: Hyundai Super-286E, "Version V3.13c"; capital V:
+        # "286 Modular BIOS V3.03 NFS")
+        and re.search(rb"Modular BIOS (?:[vV]|Version )V?[34]\.\d", rom) is not None
         or (b"Award Software" in rom and b"Status Page" in rom)
         # (OEM builds of 3.x name only their own version: "BIOS Version 3.20  Rev. 3.",
         # "WGM386-25/33 BIOS VER 3.04")

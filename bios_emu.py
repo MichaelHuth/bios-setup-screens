@@ -102,6 +102,15 @@ FONT_PLANE = 0xA0000  # fonts loaded into plane 2: 32 bytes per character
 SHADOW_BASE = 0xC0000
 ALI_P54C = b"PCI/ISA P54C BIOS"  # (Acer: see _ali_pam)
 TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_irq)
+# refresh toggles (port 61h bit 4, one per 15 us) in one 55 ms timer tick: a POST counting them
+# between two timer interrupts expects about 1820 cycles (Award 286: "REFRESH TIMING ERROR")
+REFRESH_PER_TICK = 3640
+# ports written only for an I/O delay (no device here): Gigabyte's KT133 boards write E0h 4096
+# times per bit of a GPIO handshake, others EBh/EDh
+DELAY_PORTS = frozenset((0xE0, 0xEB, 0xED))
+CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
+BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
+BEEP_READS = 1000  # port 61h reads (about 15 ms of refresh toggles) a beep lasts at least
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -194,6 +203,36 @@ HWMON_VOLTAGES = {0x20: 0x64, 0x21: 0x9C, 0x22: 0xCE, 0x23: 0xBA, 0x24: 0xBB}
 # setup) or 26h (AMIBIOS 7's), 5 V standby at 27h, the battery at 28h, temperatures in degrees
 # at 29h-2Bh. Winbond has a temperature at 27h and fan counts at 28h-2Ah instead.
 HWMON_ITE = {0x25: 0x3D, 0x26: 0xEE, 0x27: 0xBA, 0x28: 0xBC, 0x29: 0x26, 0x2A: 0x20, 0x2B: 0x2D}
+# Fans turning (CPU, system, third): their counts (ITE 0Dh-0Fh, Winbond 28h-2Ah) are
+# 1,350,000 / (RPM x divisor), with the divisors the BIOS set (ITE 0Bh; Winbond 47h, 4Bh and
+# 5Dh, kept with their power-on values); all ones read as stopped fans (0 RPM)
+FAN_RPM = (4500, 3000, 2700)
+# The layout is chosen by the first register the BIOS selects that only one of the two has
+# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later),
+# or by a value only Winbond's (and the LM78's) configuration register 40h is given: 00h
+# (stopped) or 80h (initialise; ITE's 40h is a temperature limit). PCChips 598, 2k0308s:
+# 40h = 00h, 01h, then the fan at 29h; 01h alone also comes from ITE boards (PCChips M586LMR)
+HWMON_ITE_ONLY = frozenset((0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x13, 0x14, 0x15, 0x16, 0x17))
+HWMON_WINBOND_ONLY = frozenset((0x47, 0x4E, 0x4F))
+HWMON_WINBOND_CONFIG = (0x00, 0x80)
+HWMON_WINBOND = {0x27: 0x26}  # (its temperature at 27h: 38 C)
+HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
+# VT82C686A's own hardware monitor (function 4: I/O base at 70h, decoded with 74h bit 0), in
+# the scales of the Linux via686a driver: temperatures 38, 32 and 45 C at 20h, 21h and 1Fh (the
+# chip's curve), Vcore 1.6 V, 2.5 V, 3.3 V, 5 V and 12 V at 22h-26h, fan counts at 29h/2Ah
+# (the CPU and system fans of FAN_RPM, with the divisors of 47h bits 4-5 and 6-7)
+VIA_HWMON = {0x1F: 0xAE, 0x20: 0xA0, 0x21: 0x93, 0x22: 0x82, 0x23: 0xCD, 0x24: 0xCB}
+VIA_HWMON |= {0x25: 0xC5, 0x26: 0xC3, 0x47: 0x5F}
+# Genesys GL520SM at SMBus 2Dh (PCChips' VIA boards), in the scales of the Linux gl520sm
+# driver: chip ID 20h, temperatures 38 and 32 C at 04h and 0Eh (value - 130), Vcore 1.6 V at
+# 0Dh and 3.3 V at 14h (19 mV steps), 12 V at 13h (through the board's divider), 5 V at 15h
+# (23.75 mV steps); the fan counts of FAN_RPM in the word at 07h (fan 1 first), with the
+# divisors of 0Fh bits 6-7 and 4-5 (480000 / (count * divisor) RPM)
+GL520_ADDRESS = 0x2D
+# a Winbond monitor on the SMBus (Intel 845 boards' AMI Hi-Flex: nr120102 at 2Ch), from 20h on
+# answered as the one at 295h in Winbond's layout (_smbus_winbond)
+WINBOND_ADDRESSES = (0x2C, 0x2D)
+GL520 = {0x00: 0x20, 0x04: 0xA8, 0x0D: 0x54, 0x0E: 0xA2, 0x13: 0x98, 0x14: 0xAE, 0x15: 0xD2}
 # the other functions of an ICH south bridge and the devices beside it on bus 0
 ICH_FUNCTIONS = {
     0x2440: {
@@ -885,6 +924,9 @@ CPU_BRANDS = dict.fromkeys((0x2560, 0x2570, 0x2578), "Intel(R) Pentium(R) 4 CPU 
 # model 2 stepping 7, brand index 9 (Fujitsu-Siemens D1326's Phoenix, 845: Unicorn's own
 # signature 306C4h is not in its table, and it searches the table again for good)
 P4_SIGNATURE_HOSTS = (0x1A30,)
+# the Northwood's signature (family Fh, model 2, stepping 7): CPUID 1 and EDX after a
+# reset (Dell's PLUS 1.10 keeps DL from the reset in CMOS for its "Processor 0 ID")
+P4_SIGNATURE = 0xF27
 CPU_BRANDS[0x1A30] = "Intel(R) Pentium(R) 4 CPU 2.00GHz"
 KBC_REPLIES = (0xFA, 0xAA)  # acknowledge, self-test passed
 # An interrupt the emulator delivers is entered through a stub written for it into the BIOS
@@ -1131,7 +1173,6 @@ class BiosEmulator:
     ali_alias_hook: int | None
     dram_hook: int | None
     dram_saved: bytes | None
-    hwmon_polled: int | None
     shadow_before: list[bool] | None
     prefetched: tuple[int, bytes, bytes] | None
     hw_keys: list[int]
@@ -1180,6 +1221,10 @@ class BiosEmulator:
         # the rest reads FFh as before (no chip found). Fujitsu-Siemens D1326's Phoenix clears
         # bit 5 of logical device 7's register F0h and waits until it reads clear.
         self.sio_index, self.sio_regs = {0x2E: 0, 0x4E: 0}, {}
+        self.ite_monitor = 0  # an ITE environment controller's base (_ite_monitor_base)
+        # I/O bases taken from configuration registers, looked up on every port access: kept
+        # until a configuration write or the next slice (code here may set registers too)
+        self.io_bases: dict[str, Any] = {}
         self.smbus_block_read = b""  # the bytes of a block read still to come
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
@@ -1198,6 +1243,11 @@ class BiosEmulator:
         }
         self.spd_asked = False
         self.smbus_devices = {}  # other SMBus devices: address -> registers (_smbus_write)
+        gl520 = self.smbus_devices[GL520_ADDRESS] = bytearray(256)
+        for reg, value in GL520.items():
+            gl520[reg] = value
+        gl520[0x4E] = 0x80  # (a Winbond's bank select there, as after power-on)
+        self.smbus_devices[0x2C] = bytearray(0x4E) + b"\x80" + bytearray(0xB1)  # (Winbond)
         self.smbus_result, self.smbus_idle = 0, 0  # (see _in: an end bit cleared too early)
         self.pam_base = 0x90 if host_id in PAM_AT_90 else 0x59
         self.vga_card_rom = None
@@ -1391,7 +1441,16 @@ class BiosEmulator:
         self.max_seconds = MAX_SECONDS
         self.key_polls = 0
         self.ticks = 0
+        # refresh toggles read since the last timer tick; a slice ends at a tick's worth while
+        # IRQ 0 can come (refresh_cut)
+        self.refresh_toggles, self.refresh_cut = 0, False
         self.rtc_reads = 0
+        # reads of one CMOS register above the clock's with no CMOS write between: a POST
+        # waiting there for what code left out sets (an SMI handler: Gigabyte 6VTX polls 7Eh)
+        self.cmos_polled, self.cmos_polls = -1, 0
+        # beeps: the speaker on (port 61h bits 0-1) for BEEP_READS reads of port 61h at least
+        # (key clicks and timer 2 uses are shorter); refresh_reads counts all of them
+        self.beeps, self.beep_from, self.refresh_reads = 0, 0, 0
         self.stopped_reason = ""
         self._init_bda()
         self._clear_screen(0x07)
@@ -1420,8 +1479,12 @@ class BiosEmulator:
         self.hwmon_index, self.apm_status = 0xFF, 0
         # Headland HT101/102 (286 boards, about 1988): index at 1EDh, data at 1EFh, read back
         self.headland_index, self.headland = 0, bytearray(256)
-        self.hwmon_polled, self.hwmon_polls = None, 0  # (the fan count polled on and on)
-        self.hwmon_winbond = False  # (the BIOS chose a register only Winbond's chips have)
+        self.hwmon_divisors = dict(HWMON_DIVISORS)
+        self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
+        self.hwmon_started = False  # 40h = 01h written (Winbond's start bit or an ITE limit)
+        self.via_hwmon = bytearray(0x80)  # VT82C686A's monitor registers (see VIA_HWMON)
+        for index, value in VIA_HWMON.items():
+            self.via_hwmon[index] = value
         self.reset_control = 0  # port CF9h
         self.umc = self.pci_devices.get((16, 0), b"")[0:2] == bytes.fromhex("6010")
         if self.umc:  # after reset: reads from the ROM, writes to the RAM behind it
@@ -2161,6 +2224,7 @@ class BiosEmulator:
         return self.pci_devices.get((slot, function))
 
     def _pci_write(self, port: int, size: int, value: int) -> None:
+        self.io_bases.clear()
         reg = (self.pci_addr & 0xFC) + (port - 0xCFC)
         cfg = self._pci_config()
         if cfg is not None:
@@ -2230,6 +2294,11 @@ class BiosEmulator:
             smbus_bar = SMBUS_FUNCTIONS.get(key)
             if smbus_bar is not None and smbus_bar <= reg + size - 1 and reg <= smbus_bar + 1:
                 base = int.from_bytes(bytes(cfg[smbus_bar : smbus_bar + 2]), "little") & 0xFFF0
+                self.smbus_base = base or None
+            if key == (7, 3) and cfg[0:2] == b"\x06\x11" and 0x80 <= reg + size - 1 and reg <= 0x81:
+                # the VT82C596's SMBus base (function 3, 80h; Linux i2c-viapro's SMBBA2): AMI's
+                # VIA boards modelled with a 686 set it there (PCChips M768VMR: 5F00h)
+                base = int.from_bytes(bytes(cfg[0x80:0x82]), "little") & 0xFFF0
                 self.smbus_base = base or None
         if self.sis496 and (self.pci_addr & 0x80FFFF00) == 0x80002800:  # SiS 85C496 (0:5.0)
             if reg <= 0x45 and 0x44 < reg + size and cfg is not None:
@@ -3415,40 +3484,52 @@ class BiosEmulator:
     def _pm_offset(self, port: int) -> int | None:
         """Offset of port in the power management I/O space: an ICH's (base at LPC 40h, 128
         ports) or a PIIX4's (base at function 3 40h, 64 ports; e.g. GPI at 30h reads 0)."""
+        if (space := self.io_bases.get("pm")) is None:
+            space = self.io_bases["pm"] = self._pm_space()
+        if space[1]:
+            base, size = space
+            return port - base if base and 0 <= port - base < size else None
+        if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
+            return port - self.via_pm_base
+        return None
+
+    def _pm_space(self) -> tuple[int, int]:
+        """The chipset's power management I/O space for _pm_offset: (base, ports), base 0 when
+        not set; (0, 0) where no such chipset is modelled."""
         lpc = self.pci_devices.get((31, 0))
         if lpc is not None and lpc[0:2] == bytes((0x86, 0x80)):
-            base = int.from_bytes(bytes(lpc[0x40:0x42]), "little") & 0xFF80
-            return port - base if base and 0 <= port - base < 0x80 else None
+            return int.from_bytes(bytes(lpc[0x40:0x42]), "little") & 0xFF80, 0x80
         pm = self.pci_devices.get((7, 3))
         if pm is not None and pm[0:4] == bytes((0x86, 0x80, 0x13, 0x71)):
-            base = int.from_bytes(bytes(pm[0x40:0x42]), "little") & 0xFFC0
-            return port - base if base and 0 <= port - base < 0x40 else None
+            return int.from_bytes(bytes(pm[0x40:0x42]), "little") & 0xFFC0, 0x40
         isa = self.pci_devices.get((1, 0))
         if isa is not None and isa[0:4] == bytes((0x39, 0x10, 0x08, 0x00)):
             # SiS 5597/5598 ISA bridge: ACPI/power management I/O at 90h (64 ports; ASUS SP-AX
             # halts when its status register at +0 reads bit 8 set)
-            base = int.from_bytes(bytes(isa[0x90:0x92]), "little") & 0xFFC0
-            return port - base if base and 0 <= port - base < 0x40 else None
+            return int.from_bytes(bytes(isa[0x90:0x92]), "little") & 0xFFC0, 0x40
         via = self.pci_devices.get((17, 0))
         if via is not None and via[0:2] == b"\x06\x11":
             # VT8233 and later (VT8237, VX855): power management I/O base at 88h, 128 ports
-            base = int.from_bytes(bytes(via[0x88:0x8A]), "little") & 0xFF80
-            return port - base if base and 0 <= port - base < 0x80 else None
-        if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
-            return port - self.via_pm_base
-        return None
+            return int.from_bytes(bytes(via[0x88:0x8A]), "little") & 0xFF80, 0x80
+        return 0, 0
 
     def _via_smbus(self, off: int, value: int | None = None) -> int:
         """VT82C686 SMBus host at PM I/O +E0h (as MSI MS-6316's AMI uses it): +E0h status
         (bit 3 busy, bit 4 byte done), +E1h busy (clears once read), +E2h control (a write
         starts), +E4h slave address, +E8h command (the EEPROM offset), +E6h data. Answered from
-        the SPD EEPROMs. value None: a read."""
+        the SPD EEPROMs and the other SMBus devices (the monitors: k7asa's setup writes the
+        GL520SM at 2Dh). value None: a read."""
         if value is not None:
             self.via_smb[off - 0xE0] = value
             if off == 0xE2:
-                eeprom = self.spd.get(self.via_smb[4] >> 1, bytes(256))
-                cmd = self.via_smb[8] or self.via_smb[3]
-                self.via_smb_data = eeprom[cmd] if cmd < len(eeprom) else 0
+                address, cmd = self.via_smb[4] >> 1, self.via_smb[8] or self.via_smb[3]
+                eeprom = self.spd.get(address, self.smbus_devices.get(address, bytes(256)))
+                if not self.via_smb[4] & 1 and address in self.smbus_devices:
+                    self._device_store(address, cmd, self.via_smb[6])  # (a byte written)
+                elif cmd < len(eeprom):  # (a word's second byte at +E7h)
+                    self.via_smb_data, self.via_smb[7] = self._device_word(address, eeprom, cmd)
+                else:
+                    self.via_smb_data = 0
                 self.via_smb_state = 1
             return 0
         if off == 0xE0:
@@ -3461,6 +3542,29 @@ class BiosEmulator:
         if off == 0xE6:
             return self.via_smb_data
         return self.via_smb[off - 0xE0]
+
+    def _device_word(self, address: int, regs: bytes | bytearray, offset: int) -> tuple[int, int]:
+        """What an SMBus device answers at offset and the next: its registers (an SPD EEPROM's
+        bytes), the GL520SM's fan counts in the word at 07h, a Winbond's from 20h on."""
+        if address == GL520_ADDRESS and offset == 0x07:  # the fan counts
+            misc = regs[0x0F]
+            fan1, fan2 = (
+                min(0xFF, round(480_000 / (rpm << (misc >> shift & 3))))
+                for rpm, shift in zip(FAN_RPM, (6, 4))
+            )
+            return fan1, fan2
+        if address in WINBOND_ADDRESSES and offset >= 0x20:  # a Winbond's registers
+            return self._smbus_winbond(offset, regs), self._smbus_winbond(offset + 1 & 0xFF, regs)
+        return regs[offset], regs[(offset + 1) & 0xFF]
+
+    def _device_store(self, address: int, offset: int, value: int) -> None:
+        """A byte written to a (non-SPD) SMBus device's register: kept, but not over the
+        GL520SM's readings; a Winbond's fan divisors as those of the 295h monitor."""
+        regs = self.smbus_devices[address]
+        if address != GL520_ADDRESS or offset not in GL520:  # (readings: the chip's own)
+            regs[offset] = value
+        if address in WINBOND_ADDRESSES and offset >= 0x20 and offset in self.hwmon_divisors:
+            self.hwmon_divisors[offset] = value
 
     def _smbus_write(self, reg: int, value: int) -> None:
         """SMBus host registers: 0 status (written ones clear bits), 2 control (40h starts the
@@ -3548,11 +3652,9 @@ class BiosEmulator:
                 offset = self.smbus_next = getattr(self, "smbus_next", 0)
                 # pylint: disable-next=attribute-defined-outside-init
                 self.smbus_next = (offset + 1) & 0xFF
-            self.smbus[5] = eeprom[offset]
-            self.smbus[6] = eeprom[(offset + 1) & 0xFF]
+            self.smbus[5], self.smbus[6] = self._device_word(address, eeprom, offset)
         elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
-            assert isinstance(eeprom, bytearray)
-            eeprom[offset] = self.smbus[5]
+            self._device_store(address, offset, self.smbus[5])
         if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)
@@ -3581,6 +3683,11 @@ class BiosEmulator:
     def _via_smi_port(self) -> int:
         """The VIA software SMI command port (power management I/O base + 2Fh: the VT82C686's
         base at function 4 register 48h, VT8233 and later at 88h of function 0), or -1."""
+        if (port := self.io_bases.get("smi")) is None:
+            port = self.io_bases["smi"] = self._via_smi_lookup()
+        return port
+
+    def _via_smi_lookup(self) -> int:
         pm = self.pci_devices.get((7, 4))
         if pm is not None and pm[2:4] == b"\x57\x30":
             base = int.from_bytes(bytes(pm[0x48:0x4A]), "little") & 0xFF80
@@ -3591,10 +3698,26 @@ class BiosEmulator:
             return base + 0x2F if base else -1
         return -1
 
+    def _via_hwmon_index(self, port: int) -> int | None:
+        """The VT82C686A hardware-monitor register a port is (function 4: base 70h, on with 74h
+        bit 0), or None."""
+        if (base := self.io_bases.get("via_hwmon")) is None:
+            cfg = self.pci_devices.get((7, 4))
+            base = 0
+            if cfg is not None and bytes(cfg[0:4]) == b"\x06\x11\x57\x30" and cfg[0x74] & 1:
+                base = int.from_bytes(bytes(cfg[0x70:0x72]), "little") & 0xFF80
+            self.io_bases["via_hwmon"] = base
+        return port - base if base and 0 <= port - base < 0x80 else None
+
     def _via_pm_base(self) -> int:
         """The VIA south bridge's power management I/O base: the VT82C686's (function 4,
         register 48h) or the VT82C596's (function 3; AMI's VT693 boot block sets it there
         though the 686 is modelled), or 0."""
+        if (base := self.io_bases.get("via_pm")) is None:
+            base = self.io_bases["via_pm"] = self._via_pm_lookup()
+        return base
+
+    def _via_pm_lookup(self) -> int:
         for function in (4, 3):
             cfg = self.pci_devices.get((7, function))
             if cfg is not None and cfg[0:2] == b"\x06\x11":
@@ -3665,6 +3788,24 @@ class BiosEmulator:
     def _in(self, uc: Uc, port: int, size: int, _user: object) -> int:
         if port in self.io_reads:
             return self.io_reads[port]
+        if port == 0x61:  # (first: delay loops read it millions of times)
+            self.port61 ^= 0x10  # refresh toggle, used by delay loops
+            self.refresh_toggles += 1
+            self.refresh_reads += 1
+            if (
+                self.refresh_toggles >= REFRESH_PER_TICK
+                and self.timer_irq
+                and self.pit0_running
+                and not self.irq0_pending
+                and not self.pic_mask & 1
+                and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200
+                and not uc.reg_read(UC_X86_REG_CR0) & 1
+            ):
+                self.refresh_cut = True  # a tick has passed: the slice ends, IRQ 0 comes
+                uc.emu_stop()
+            if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
+                self.port61 ^= 0x20
+            return self.port61
         # HP's AMIBIOS 7 boards (BCM IN845 Rev 1.14) read a hardware-monitor data port
         # and take all ones for a stopped CPU fan, then halt; 00 is "no reading yet"
         if port == 0x0A59:
@@ -3704,22 +3845,29 @@ class BiosEmulator:
             return 0
         if port == 0xB3 and size == 1:  # APM status: a scratch byte, 0 after power-on (an
             return self.apm_status  # AMIBIOS boot block resets while it reads non-zero, rc6103)
+        if self.ite_monitor and 5 <= port - self.ite_monitor <= 6:
+            port = 0x290 + port - self.ite_monitor  # (the monitor at the ITE's own base)
         if port == 0x295 and size == 1:  # Winbond hardware monitor's index: read back, not
             return self.hwmon_index & 0x7F  # busy (bit 7; AMIBIOS 7 waits for it, s85mir3l)
         if port == 0x296 and size == 1:
             index = self.hwmon_index & 0x7F
-            value = HWMON_VOLTAGES.get(index, None if self.hwmon_winbond else HWMON_ITE.get(index))
+            if self.hwmon_winbond is None and self.hwmon_started and 0x27 <= index <= 0x2A:
+                # started with 40h = 01h and read at Winbond's temperature and fans before
+                # any register only ITE has (PCChips 747; M586LMR selects ITE's 13h first)
+                self.hwmon_winbond = True
+            layout = HWMON_WINBOND if self.hwmon_winbond else HWMON_ITE
+            value = HWMON_VOLTAGES.get(index, layout.get(index))
             if value is not None:
                 return value
-        if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in (0x28, 0x29, 0x2A):
-            # Winbond fan counts read FFh (stopped) as before, unless the same one is polled
-            # on and on: MSI MS-6380E waits at a "CPU fan" prompt reading Y/N from port 60h
-            # while it reads FFh (other chips keep temperatures there: setup pages stay as
-            # they were)
-            self.hwmon_polls = self.hwmon_polls + 1 if self.hwmon_index == self.hwmon_polled else 0
-            self.hwmon_polled = self.hwmon_index
-            if self.hwmon_polls > 1000:
-                return 0x80
+            if index in self.hwmon_divisors:
+                return self.hwmon_divisors[index]
+            if (count := self._fan_count(index)) is not None:
+                return count
+        if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
+            if reg in (0x29, 0x2A):
+                shift = self.via_hwmon[0x47] >> 2 * (reg - 0x27) & 3
+                return min(0xFE, max(1, round(1_350_000 / (FAN_RPM[reg - 0x29] << shift))))
+            return self.via_hwmon[reg]
         if port == 0x800 and self.mylex_counter:  # (MVE486: the memory test's byte count,
             return uc.reg_read(UC_X86_REG_EBX) >> 16 & 0xFF  # compared with its own in EBX)
         if port == 0x2A and self.um8498_phase == 2:
@@ -3735,11 +3883,6 @@ class BiosEmulator:
             return self.opti_regs[index] if index < 0x12 or index >= 0x20 else 0xFF
         if port == 0xA9 and self.via_wrote:
             return self.via_regs[self.via_index]
-        if port == 0x61:
-            self.port61 ^= 0x10  # refresh toggle, used by delay loops
-            if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
-                self.port61 ^= 0x20
-            return self.port61
         if port == 0x63:  # (PC Partner H8010's AMI setup waits for a high, then a low)
             self.port63 ^= 0x10
             return self.port63
@@ -3773,13 +3916,23 @@ class BiosEmulator:
                 self.rtc_reads += 0 if self.rtc_frozen else 1
                 sec = (self.rtc_reads // 20) % 60
                 return (sec // 10) << 4 | sec % 10
-            return self.cmos[self.cmos_index & 0x7F]
+            index = self.cmos_index & 0x7F
+            if index >= 0x0E:  # (no clock register: only a program changes it)
+                if index != self.cmos_polled:
+                    self.cmos_polled, self.cmos_polls = index, 0
+                self.cmos_polls += 1
+                if self.cmos_polls > CMOS_POLLS:
+                    self.stopped_reason = f"polling CMOS register {index:02X}h"
+                    uc.emu_stop()
+            return self.cmos[index]
         if port in (0x73, 0x75):
             return self.cmos_hi[self.cmos_hi_index]
         pm = self._pm_offset(port)
         if pm is not None:
             if self.via_pm_base and 0xE0 <= pm < 0xF0 and size == 1:
                 return self._via_smbus(pm)
+            if self.via_pm_base and pm == 0xE6 and size == 2:  # a word's data (k7asa's fans)
+                return self._via_smbus(0xE6) | self.via_smb[7] << 8
             if 0x08 <= pm < 0x0C:  # PM timer, 3.58 MHz: time passes as it is read
                 self.pm_timer = (self.pm_timer + 0x40) & 0xFFFFFF
                 return self.pm_timer >> 8 * (pm - 8) & ((1 << 8 * size) - 1)
@@ -3906,6 +4059,8 @@ class BiosEmulator:
                 if self.smbus_idle > 64:
                     self.smbus[0] |= self.smbus_result
                     self.smbus_result = 0
+            if port - self.smbus_base == 2:  # control: START (bit 6) is write-only, reads 0
+                return self.smbus[2] & ~0x40  # (w1641v11's AMI waits for it to clear)
             return self.smbus[port - self.smbus_base]
         if 0x481 <= port <= 0x48F or (
             self.dma_pages_ext and (0x401 <= port <= 0x40F or 0x4C1 <= port <= 0x4CF)
@@ -3960,6 +4115,16 @@ class BiosEmulator:
         if index < 0x30:
             return port, None, index
         return port, self.sio_regs.get((port, None, 0x07), 0), index
+
+    def _ite_monitor_base(self, config: int) -> None:
+        """The base of an ITE environment controller (logical device 4: 60h-61h, on with 30h
+        bit 0) as set through the config port: its address and data ports (base + 5 and 6) are
+        the monitor's, as 295h/296h. Only bases from 400h on (PCChips' ITE boards: 800h; a
+        serial port is logical device 4 of other Super I/O chips)."""
+        regs = self.sio_regs
+        base = regs.get((config, 4, 0x60), 0) << 8 | regs.get((config, 4, 0x61), 0)
+        on = regs.get((config, 4, 0x30), 0) & 1
+        self.ite_monitor = base & 0xFFF8 if on and base >= 0x400 else 0
 
     def _div_overflow(self, uc: Uc) -> bool:
         """A 32-bit DIV whose quotient does not fit: BIOSes measure the CPU clock with RDTSC
@@ -4055,6 +4220,33 @@ class BiosEmulator:
         elif op.size == 4 and (edx << 32 | eax) // divisor > 0xFFFFFFFF:
             uc.reg_write(UC_X86_REG_EDX, 0)
 
+    def _fan_count(self, index: int) -> int | None:
+        """A turning fan's count at hardware-monitor register index (None: not a fan's)."""
+        div = self.hwmon_divisors
+        if self.hwmon_winbond and 0x28 <= index <= 0x2A:
+            fan = index - 0x28
+            low = (div[0x47] >> 4 + 2 * fan if fan < 2 else div[0x4B] >> 6) & 3
+            shift = low | (div[0x5D] >> 5 + fan & 1) << 2
+        elif not self.hwmon_winbond and 0x0D <= index <= 0x0F:
+            fan = index - 0x0D
+            shift = div[0x0B] >> 3 * fan & 7 if fan < 2 else 3 if div[0x0B] & 0x40 else 1
+        else:
+            return None
+        return min(0xFE, max(1, round(1_350_000 / (FAN_RPM[fan] << shift))))
+
+    def _smbus_winbond(self, reg: int, regs: bytes | bytearray) -> int:
+        """A Winbond monitor's register on the SMBus at 2Ch or 2Dh, from 20h on (at 2Dh beside
+        the GL520SM's below; each BIOS reads its own): what the 295h model answers in Winbond's
+        layout, the vendor ID in 4Fh by the bank select 4Eh (bit 7: high byte 5Ch, else A3h)."""
+        if reg == 0x4F:
+            return 0x5C if regs[0x4E] & 0x80 else 0xA3
+        value = HWMON_VOLTAGES.get(reg, HWMON_WINBOND.get(reg, self.hwmon_divisors.get(reg)))
+        if value is None:
+            saved, self.hwmon_winbond = self.hwmon_winbond, True
+            value = self._fan_count(reg)
+            self.hwmon_winbond = saved
+        return regs[reg] if value is None else value
+
     def _cpuid(self, uc: Uc, _user: object) -> int:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)
         as on the board's own CPUs; the emulated CPU answers everything else."""
@@ -4071,7 +4263,7 @@ class BiosEmulator:
         if self.cpu_p4_signature and leaf == 1 and not self.cpu_amd:
             for reg, value in zip(
                 (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
-                (0xF27, 0x00010809, 0, 0xBFEBFBFF),
+                (P4_SIGNATURE, 0x00010809, 0, 0xBFEBFBFF),
             ):
                 uc.reg_write(reg, value)
             return 1
@@ -4144,6 +4336,8 @@ class BiosEmulator:
         return patched
 
     def _out(self, uc: Uc, port: int, size: int, value: int, _user: object) -> None:
+        if port in DELAY_PORTS:  # (nothing there: delays, millions in a row)
+            return
         if self.flash_low and port in (0x3F0, 0x3F1):
             self._flash_bank(port, value & 0xFF)
         if (
@@ -4157,7 +4351,10 @@ class BiosEmulator:
             self.sio_index[port] = value & 0xFF
             return
         if port in (0x2F, 0x4F) and size == 1:
-            self.sio_regs[self._sio_key(port - 1)] = value & 0xFF
+            key = self._sio_key(port - 1)
+            self.sio_regs[key] = value & 0xFF
+            if key[1:] in ((4, 0x30), (4, 0x60), (4, 0x61)):
+                self._ite_monitor_base(port - 1)
             return
         if port == 0xCF8 and size == 1:  # mechanism #2 (see _in)
             self.pci_cse = value & 0xFF
@@ -4165,10 +4362,27 @@ class BiosEmulator:
         if port == 0xCFA and size == 1:
             self.pci_forward = value & 0xFF
             return
+        if self.ite_monitor and 5 <= port - self.ite_monitor <= 6:
+            port = 0x290 + port - self.ite_monitor  # (the monitor at the ITE's own base)
         if port == 0x295:
             self.hwmon_index = value & 0xFF
             # (Winbond: fan divisors 47h, bank select 4Eh, vendor ID 4Fh)
-            self.hwmon_winbond = self.hwmon_winbond or value & 0x7F in (0x47, 0x4E, 0x4F)
+            if self.hwmon_winbond is None and value & 0x7F in HWMON_ITE_ONLY | HWMON_WINBOND_ONLY:
+                self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
+        if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
+            self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
+        if (
+            port == 0x296
+            and self.hwmon_winbond is None
+            and self.hwmon_index & 0x7F == 0x40
+            and value & 0xFF in HWMON_WINBOND_CONFIG
+        ):
+            self.hwmon_winbond = True
+        if port == 0x296 and self.hwmon_index & 0x7F == 0x40 and value & 0xFF == 0x01:
+            self.hwmon_started = True  # (Winbond's start bit, or an ITE limit: see _in)
+        if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
+            if reg not in VIA_HWMON or reg == 0x47:  # (the readings are the chip's own)
+                self.via_hwmon[reg] = value & 0xFF
         if 0xC000 <= port <= 0xCFFF and self.pci_cse & 0xF0:
             if self.pam_valid and not self.pci_used:
                 self._shadow_change(lambda: setattr(self, "pci_used", True))
@@ -4275,12 +4489,21 @@ class BiosEmulator:
             self.cmos_hi[self.cmos_hi_index] = value & 0xFF
         elif port == 0x71:
             self.cmos[self.cmos_index & 0x7F] = value & 0xFF
+            self.cmos_polls = 0
             if self.cmos_index & 0x7F == 0x0B and value & 0x40 and self.timer_irq:
                 self.rtc_pending = True  # periodic interrupt on: the first one comes soon
                 self._want_hook("irq0_hook")
         elif port == 0x61:
             # bits 0-3 are written; 4-7 are status (refresh, timer 2, parity and I/O check
             # errors: none here)
+            if value & 3 == 3 and self.port61 & 3 != 3:  # the speaker on
+                self.beep_from = self.refresh_reads
+            elif value & 3 != 3 and self.port61 & 3 == 3:  # and off: a beep if it was long
+                if self.refresh_reads - self.beep_from >= BEEP_READS:
+                    self.beeps += 1
+                if self.beeps > BEEPS:  # (an error beeped over and over: POST goes no further)
+                    self.stopped_reason = "beeping without end (a POST error)"
+                    uc.emu_stop()
             self.port61 = self.port61 & 0x30 | value & 0x0F
             # gate on: channel 2 counts down. The hook stays while a program toggles the gate
             # (a beep does so thousands of times) and is removed between two runs.
@@ -4587,11 +4810,16 @@ class BiosEmulator:
 
     # --- run --------------------------------------------------------------------------------
 
+    def _reset_signature(self) -> int:
+        return P4_SIGNATURE if self.cpu_p4_signature and not self.cpu_amd else 0x0435
+
     def run(
         self, cs: int, ip: int, ss: int = 0x0030, sp: int = 0x0100, ds: int = 0x40, es: int = 0
     ) -> Screen:
         uc = self.uc
         self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
+        if self.from_reset and self.cpu_p4_signature and not self.cpu_amd:
+            uc.reg_write(UC_X86_REG_EDX, P4_SIGNATURE)  # (as after power-on)
         if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
@@ -4679,8 +4907,8 @@ class BiosEmulator:
         uc.reg_write(UC_X86_REG_CS, 0xF000)
         uc.reg_write(UC_X86_REG_EIP, 0xFFF0)
         uc.reg_write(UC_X86_REG_EFLAGS, 2)
-        uc.reg_write(UC_X86_REG_EDX, 0x0435)  # the CPU's signature after a reset (a 486; MR
-        # BIOS keeps it in port 85h and checks it)
+        # the CPU's signature after a reset (a 486; MR BIOS keeps it in port 85h and checks it)
+        uc.reg_write(UC_X86_REG_EDX, self._reset_signature())
         if bytes(uc.mem_read(0xF0000, 0x10000)) != bytes(uc.mem_read(0xFFFF0000, 0x10000)):
             self._reset_alias()
         _flush_tb(self.uc)
@@ -4853,7 +5081,7 @@ class BiosEmulator:
         self._raise_irq0()
 
     def _raise_irq0(self) -> None:
-        self.irq0_pending = True
+        self.irq0_pending, self.refresh_toggles = True, 0
         self._want_hook("irq0_hook")
 
     def _irq0(self, uc: Uc, address: int, size: int, generation: int) -> None:
@@ -4886,7 +5114,9 @@ class BiosEmulator:
         uc.reg_write(UC_X86_REG_EIP, ip)  # the interrupt returns to this instruction
         if self._deliver(uc, vector):
             if vector == 8:
-                self.irq0_pending = False
+                # (counted from here too: an IRQ 0 raised while masked comes when unmasked,
+                # and the next tick is a whole tick later, not at once)
+                self.irq0_pending, self.refresh_toggles = False, 0
             elif vector == 0x0E:
                 self.fdc_pending = False
             else:
@@ -4937,6 +5167,8 @@ class BiosEmulator:
                         eip_back = uc.hook_add(UC_HOOK_CODE, self._eip_back, eip, low, low)
                         _flush_tb(uc)
                 self.in_emulation = True
+                self.refresh_cut = False
+                self.io_bases.clear()
                 try:
                     uc.emu_start(pc, 0xFFFFFFFF, count=count)
                 finally:
@@ -5009,6 +5241,8 @@ class BiosEmulator:
                         remaining -= 1000
                         pc = self._code_address()
                         continue
+                if self.refresh_cut:  # (charged about what it ran: a poll loop of 8 instructions)
+                    count = min(count, 8 * REFRESH_PER_TICK)
                 remaining -= count
                 if self.stopped_reason:  # stopped by a hook (uc.emu_stop)
                     break

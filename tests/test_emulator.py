@@ -78,6 +78,108 @@ def test_the_timer_counts_down() -> None:
     assert 0 < second < first <= 0xFFFF
 
 
+@pytest.mark.parametrize("masked_before", [False, True])
+def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine(
+    masked_before: bool,
+) -> None:
+    # Award's 286 POST counts refresh cycles (port 61h bit 4) between two timer interrupts
+    # and shows "REFRESH TIMING ERROR" outside about 1370-2290. masked_before: IRQ 0 masked
+    # while port 61h is read a million times; the tick raised then comes on the unmask
+    poll = b"\xe4\x61\xa8\x10\x75\xfa"  # in al,61h ; test al,10h ; jnz (to the in)
+    poll += b"\xe4\x61\xa8\x10\x74\xfa\x42\xeb\xf1"  # the same with jz ; inc dx ; jmp (first in)
+    start = DS0 + b"\xb0\x36\xe6\x43\xb0\x00\xe6\x40\xe6\x40"  # channel 0, mode 3, count 0
+    if masked_before:  # mask all ; sti ; bx = 8 times cx = 65536 times in al,61h
+        start += b"\xb0\xff\xe6\x21\xfb\xbb\x08\x00\x31\xc9\xe4\x61\xe2\xfc\x4b\x75\xf7"
+    first = CODE_AT + len(start) + 12 + 7  # (after the vector, the mask and sti ; jmp $)
+    start += set_vector(8, first) + b"\xb0\xfe\xe6\x21\xfb\xeb\xfe"  # IRQ 0 only ; sti ; jmp $
+    count = b"\x31\xd2\x83\xc4\x06\xb0\x20\xe6\x20\xfb" + poll  # dx = 0 ; drop the frame ; EOI
+    second = first + 12 + len(count)
+    code = start + set_vector(8, second) + count + b"\x89\x16" + struct.pack("<H", OUT) + HALT
+    emu = bios_emu.BiosEmulator(rom(code), timer_irq=True, max_instructions=5_000_000)
+    emu.run(0xF000, 0xFFF0)
+    assert 1400 < struct.unpack("<H", memory(emu, OUT, 2))[0] < 2250
+
+
+def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VIA south bridge's ID)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    # the VT82C596's SMBus base at function 3, 80h (PCChips M768VMR: 5F00h)
+    emu.pci_addr = 0x80000000 | 7 << 11 | 3 << 8 | 0x80
+    emu._pci_write(0xCFC, 2, 0x5F01)
+    assert emu.smbus_base == 0x5F00
+
+    def transfer(address: int, command: int, protocol: int, data: int = 0) -> tuple[int, int]:
+        emu._smbus_write(0, 0xFF)
+        emu._smbus_write(4, address)
+        emu._smbus_write(3, command)
+        emu._smbus_write(5, data)
+        emu._smbus_write(2, 0x40 | protocol << 2)
+        return emu.smbus[5], emu.smbus[6]
+
+    assert transfer(0x5B, 0x00, 2)[0] == 0x20  # chip ID
+    transfer(0x5A, 0x0F, 2, 0x54)  # fan divisors 2 and 2
+    transfer(0x5A, 0x04, 2, 0x00)  # (a reading is not written)
+    assert transfer(0x5B, 0x04, 2)[0] - 130 == 38  # C
+    fan1, fan2 = transfer(0x5B, 0x07, 3)  # the word of the fan counts
+    assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
+
+
+def test_the_pm_smbus_host_reaches_the_monitor() -> None:
+    # the VIA/AMD host at PM I/O +E0h: the GL520SM at 2Dh written (fan divisors 2, 2 in 0Fh),
+    # then its fan word at 07h read (+E6h, +E7h): 4528 and 3000 RPM
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    for off, value in ((0xE4, 0x5A), (0xE8, 0x0F), (0xE6, 0x50), (0xE2, 0x0A)):
+        emu._via_smbus(off, value)
+    for off, value in ((0xE4, 0x5B), (0xE8, 0x07), (0xE2, 0x0B)):
+        emu._via_smbus(off, value)
+    fan1, fan2 = emu._via_smbus(0xE6), emu._via_smbus(0xE7)
+    assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
+
+
+def test_a_winbond_monitor_on_the_smbus() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+
+    def read(address: int, command: int) -> int:
+        for reg, value in ((0, 0xFF), (4, address << 1 | 1), (3, command), (2, 0x48)):
+            emu._smbus_write(reg, value)
+        return emu.smbus[5]
+
+    # at 2Ch: Vcore and the temperature as at 295h, the vendor ID's high byte (bank 80h);
+    # at 2Dh the GL520SM's ID below 20h and the same Winbond registers from 20h on
+    assert [read(0x2C, r) for r in (0x20, 0x27, 0x4F)] == [0x64, 38, 0x5C]
+    assert [read(0x2D, r) for r in (0x00, 0x20)] == [0x20, 0x64]
+
+
+def test_a_post_polling_a_cmos_register_nothing_changes_stops() -> None:
+    # mov al,7Eh ; out 70h,al ; in al,71h ; jmp to the start: nothing here sets 7Eh
+    emu = bios_emu.BiosEmulator(rom(b"\xb0\x7e\xe6\x70\xe4\x71\xeb\xf8"), max_instructions=10**8)
+    emu.run(0xF000, 0xFFF0)
+    assert emu.stopped_reason == "polling CMOS register 7Eh"
+
+
+def test_the_smbus_start_bit_reads_0() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    emu.smbus_base = 0x540
+    emu._smbus_write(2, 0x48)  # start a byte-data read
+    assert emu._in(emu.uc, 0x542, 1, None) == 0x08
+
+
+@pytest.mark.parametrize("reads, stops", [(1000, True), (50, False)])
+def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
+    # mov al,3 ; out 61h,al (speaker on) ; mov cx,reads ; in al,61h ; loop (the in) ;
+    # mov al,0 ; out 61h,al ; jmp to the start. Short ones are key clicks: no beeps
+    code = b"\xb0\x03\xe6\x61\xb9" + struct.pack("<H", reads) + b"\xe4\x61\xe2\xfc"
+    code += b"\xb0\x00\xe6\x61\xeb\xef"
+    emu = bios_emu.BiosEmulator(rom(code), max_instructions=20_000_000)
+    emu.run(0xF000, 0xFFF0)
+    if stops:
+        assert emu.stopped_reason == "beeping without end (a POST error)"
+        assert emu.beeps == bios_emu.BEEPS + 1
+    else:
+        assert emu.stopped_reason == "instruction limit reached" and emu.beeps == 0
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
@@ -121,12 +223,95 @@ def test_the_hardware_monitor_reads_normal_voltages() -> None:
     assert memory(emu, OUT, 4) == bytes((0x64, 0xBB, 0xBC, 0x26))  # 1.6 V, 12 V, 3 V, 38 degrees
 
 
+def hwmon_write(index: int, value: int) -> bytes:
+    """mov dx,295h ; mov al,index ; out dx,al ; inc dx ; mov al,value ; out dx,al"""
+    return b"\xba\x95\x02\xb0" + bytes((index,)) + b"\xee\x42\xb0" + bytes((value,)) + b"\xee"
+
+
 def test_a_winbond_monitor_keeps_its_own_registers_above_24h() -> None:
-    # once the BIOS chooses Winbond's bank select (4Eh), 28h is a fan count again (FFh: stopped)
+    # once the BIOS chooses Winbond's bank select (4Eh), 28h is a fan count again: the CPU
+    # fan at 4500 RPM (divisor 2); fan 2 with divisor 4 set in 47h: 3000 RPM
     code = DS0 + hwmon_read(0x4E, OUT) + hwmon_read(0x20, OUT) + hwmon_read(0x28, OUT + 1)
+    code += hwmon_write(0x47, 0x9F) + hwmon_read(0x29, OUT + 2) + hwmon_read(0x47, OUT + 3)
     emu = bios_emu.BiosEmulator(rom(code + HALT))
     emu.run(0xF000, 0xFFF0)
-    assert memory(emu, OUT, 2) == b"\x64\xff"
+    assert memory(emu, OUT, 4) == bytes((0x64, 150, 112, 0x9F))
+
+
+def test_an_ite_monitor_counts_its_fans_with_the_divisors_set() -> None:
+    code = DS0 + hwmon_read(0x0B, OUT) + hwmon_read(0x0D, OUT + 1) + hwmon_read(0x0F, OUT + 2)
+    code += hwmon_write(0x0B, 0x52) + hwmon_read(0x0D, OUT + 3) + hwmon_read(0x0F, OUT + 4)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    # 09h: fans 1 and 2 divided by 2; 52h: fan 1 by 4, fan 3 by 8 (2700 RPM)
+    assert memory(emu, OUT, 5) == bytes((0x09, 150, 250, 75, 62))
+
+
+def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
+    # ITE's fan divisors first, then Winbond's bank select: 28h stays ITE's battery
+    code = DS0 + hwmon_read(0x0B, OUT) + hwmon_write(0x4E, 0x80) + hwmon_read(0x28, OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
+
+
+@pytest.mark.parametrize("ite_first, fan", [(False, 225), (True, 0x26)])
+def test_the_start_bit_and_a_fan_read_choose_winbond_unless_ite_came_first(
+    ite_first: bool, fan: int
+) -> None:
+    # 40h = 01h, then 29h read: Winbond's fan 2 (3000 RPM, divisor 2); with ITE's 13h selected
+    # in between (PCChips M586LMR) ITE's temperature there (38 C)
+    code = DS0 + hwmon_write(0x40, 0x01) + (hwmon_read(0x13, OUT + 1) if ite_first else b"")
+    emu = bios_emu.BiosEmulator(rom(code + hwmon_read(0x29, OUT) + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((fan,)) and emu.hwmon_winbond is not ite_first
+
+
+@pytest.mark.parametrize("config, winbond", [(0x00, True), (0x80, True), (0x01, None)])
+def test_the_lm78_configuration_chooses_the_winbond_layout(config: int, winbond: bool) -> None:
+    # 40h = 00h (stopped) or 80h (initialise) only on an LM78/Winbond monitor (ITE's 40h is a
+    # limit; 01h comes from ITE boards too, and leaves it open): then 29h is fan 2, 3000 RPM
+    # with the power-on divisor 2, and 27h a temperature, 38 C
+    emu = bios_emu.BiosEmulator(rom(DS0 + hwmon_write(0x40, config) + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert emu.hwmon_winbond is winbond
+    if winbond:
+        code = DS0 + hwmon_write(0x40, config) + hwmon_read(0x29, OUT) + hwmon_read(0x27, OUT + 1)
+        emu = bios_emu.BiosEmulator(rom(code + HALT))
+        emu.run(0xF000, 0xFFF0)
+        assert memory(emu, OUT, 2) == bytes((225, 38))
+
+
+def test_an_ite_monitor_answers_at_the_base_of_its_logical_device_4() -> None:
+    def sio(index: int, value: int) -> bytes:
+        # mov al,index ; out 2Eh,al ; mov al,value ; out 2Fh,al
+        return b"\xb0" + bytes((index,)) + b"\xe6\x2e\xb0" + bytes((value,)) + b"\xe6\x2f"
+
+    read_806 = b"\xba\x05\x08\xb0\x20\xee\x42\xec"  # mov dx,805h ; index 20h (Vcore) ; in al,dx
+    code = DS0 + read_806 + store_al(OUT)  # (not set up yet: nothing there)
+    code += sio(0x07, 0x04) + sio(0x60, 0x08) + sio(0x61, 0x00) + sio(0x30, 0x01)
+    code += read_806 + store_al(OUT + 1)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 2) == b"\xff\x64"  # then 1.6 V
+
+
+def test_a_vt82c686a_monitor_answers_in_the_window_post_opened() -> None:
+    # function 4: monitor at C00h (70h), decoded (74h bit 0); 38 C and 1.6 V, the CPU fan at
+    # 4500 RPM (divisor 2), the system fan at 3000 RPM with divisor 4 set in 47h
+    def port_in(port: int, at: int) -> bytes:  # mov dx,port ; in al,dx ; mov [at],al
+        return b"\xba" + struct.pack("<H", port) + b"\xec" + store_al(at)
+
+    code = DS0 + port_in(0xC20, OUT) + port_in(0xC22, OUT + 1) + port_in(0xC29, OUT + 2)
+    code += b"\xba\x47\x0c\xb0\x9f\xee" + port_in(0xC2A, OUT + 3)  # out C47h,9Fh
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    function4 = bytearray(256)
+    function4[0:4] = b"\x06\x11\x57\x30"
+    emu.pci_devices[(7, 4)] = function4
+    assert emu._via_hwmon_index(0xC20) is None  # (no window yet)
+    function4[0x70:0x75] = b"\x01\x0c\x00\x00\x01"
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 4) == bytes((0xA0, 0x82, 150, 112))
 
 
 def test_halt_with_interrupts_off() -> None:
@@ -198,6 +383,27 @@ def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
     eax, edx, ratio = struct.unpack("<3I", memory(emu, OUT, 12))
     assert (eax, edx) == (0x665B5001, 0x007B7040)  # (7Bh: 512 KB L2)
     assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
+
+
+@pytest.mark.parametrize("host_id, signature", [(0, 0x0435), (0x1A30, 0xF27)])
+def test_edx_holds_the_cpus_signature_after_a_reset(host_id: int, signature: int) -> None:
+    # at power-on: mov [OUT],edx ; the 8042's reset (out 64h,FEh), then mov [OUT+4],edx
+    code = (
+        DS0
+        + b"\x80\x3e\x00\x06\x01\x74\x10"  # cmp byte [600h],1 ; je again
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT)
+        + b"\xc6\x06\x00\x06\x01\xb0\xfe\xe6\x64\xeb\xfe"  # mov byte [600h],1 ; reset
+        + b"\x66\x89\x16"
+        + struct.pack("<H", OUT + 4)  # again:
+        + HALT
+    )
+    emu = bios_emu.BiosEmulator(rom(code), host_id=host_id)
+    emu.kbc_reset_in_place = True
+    emu.run(0xF000, 0xFFF0)
+    at_power_on, after_reset = struct.unpack("<2I", memory(emu, OUT, 8))
+    assert after_reset == signature
+    assert at_power_on == (signature if host_id else 0)  # (others: as before)
 
 
 def test_the_post_screen_goes_with_the_setup_screens() -> None:

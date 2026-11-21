@@ -25,6 +25,7 @@ from typing import Any
 from unicorn.x86_const import UC_X86_REG_AX, UC_X86_REG_EFLAGS
 
 import ami
+import ami_hiflex_setup
 import ami_setup
 import bios_emu
 from award_emu_setup import cursor
@@ -56,6 +57,24 @@ MAX_GLYPHS = 8  # (the key help of every page has 2-4 arrows)
 # mov si,<table> ; mov cx,20h ; movsw cs:[si] -> es:[di] ; inc di ; inc di ; loop - the RunTime
 # routine that puts its own handler offsets into the interrupt vector table
 IVT_INSTALL = re.compile(rb"\xbe(..)\xb9\x20\x00\x2e\xa5\x47\x47\xe2\xfa", re.S)
+# POST's set-up of the hardware monitor at ports 295h/296h (fan divisors, which inputs are on),
+# done here as it is skipped: the BIOS's write routine - mov dx,295h ; out dx,al (the index in
+# AL; with an xchg ah,al or mov al,ah first, the index in AH) ; inc dx ; out dx,al (the value) -
+# and its callers: runs of mov ax,imm ; call (RunTime of Gigabyte's 030808: 0Bh = 1Bh) or a table
+# walked by mov si,<table> ; mov cx,<pairs> ; mov ax,cs:[si] ; call (POST of GA-6CMC7: 0Bh = 5Bh)
+MONITOR_WRITE = re.compile(
+    rb"\xba\x95\x02(\x86\xc4|\x86\xe0|\x8a\xc4)?\xee"
+    rb"[^\xec\xee]{0,12}?\x42(?:\x86\xc4|\x86\xe0)?\xee",
+    re.S,
+)
+WRITE_PROLOGUE = set(b"\x9c\xfa\x50\x51\x52\x53")
+MONITOR_CALLS = re.compile(rb"(?:\xb8..\xe8..){3,}", re.S)
+MONITOR_TABLE = re.compile(rb"\xbe(..)\xb9(..)\x2e\x8b\x04\xe8(..)\x83\xc6\x02\xe2", re.S)
+# the VT82C686A's own monitor at C00h as Gigabyte's VIA boards write it: mov dh,0Ch ; mov dl,al
+# (the index) ; mov al,ah ; out dx,al (6VTX: its table ends with 47h = F0h, fan divisors 8)
+VIA_MONITOR_WRITE = re.compile(rb"\xb6\x0c\x8a\xd0\x8a\xc4\xee")
+VIA_MONITOR_BASE = 0xC00
+ITE_MONITOR_INDEX = re.compile(rb"\xba\x05([\x04-\x0f])\xee")
 
 
 def _real(mod: dict[str, Any], rom: bytes) -> tuple[int, int]:
@@ -101,6 +120,42 @@ def _key_state(emu: bios_emu.BiosEmulator) -> None:
     uc.reg_write(UC_X86_REG_EFLAGS, uc.reg_read(UC_X86_REG_EFLAGS) | 0x200)
 
 
+def monitor_writes(
+    data: bytes, off: int, write: re.Pattern[bytes] = MONITOR_WRITE
+) -> list[tuple[int, int]]:
+    """The (index, value) writes of the hardware-monitor set-up in a module's image (loaded at
+    offset off of its paragraph): the runs of calls into its write routine (found by write),
+    then its tables."""
+    starts: dict[int, bool] = {}  # write routine entry -> index in AH
+    for w in write.finditer(data):
+        start = w.start()
+        while start > 0 and w.start() - start < 6 and data[start - 1] in WRITE_PROLOGUE:
+            start -= 1
+        for entry in range(start, w.start() + 1):
+            starts[entry] = w.lastindex is not None and w.group(1) is not None
+
+    def target(end: int, rel: bytes) -> int:
+        return (end + off + struct.unpack("<h", rel)[0] & 0xFFFF) - off
+
+    writes = []
+    for run in MONITOR_CALLS.finditer(data):
+        calls = [run.start() + i for i in range(0, run.end() - run.start(), 6)]
+        entries = [target(c + 6, data[c + 4 : c + 6]) for c in calls]
+        if all(e in starts for e in entries):
+            for c, e in zip(calls, entries):
+                low, high = data[c + 1], data[c + 2]
+                writes.append((high, low) if starts[e] else (low, high))
+    for t in MONITOR_TABLE.finditer(data):
+        entry = target(t.start() + 12, t.group(3))
+        table = struct.unpack("<H", t.group(1))[0] - off
+        pairs = struct.unpack("<H", t.group(2))[0]
+        if entry in starts and 0 <= table and table + 2 * pairs <= len(data) and pairs <= 0x80:
+            for i in range(table, table + 2 * pairs, 2):
+                low, high = data[i], data[i + 1]
+                writes.append((high, low) if starts[entry] else (low, high))
+    return writes
+
+
 def _label(screen: Screen, row: int, col: int, end: int) -> str:
     return bytes(screen.chars[row][col : end + 1]).decode("cp437").strip()
 
@@ -112,7 +167,13 @@ def garbled(screen: Screen) -> bool:
 class Direct:
     """The setup of an AMIBIOS Simple/Hi-Flex image, started without POST."""
 
-    def __init__(self, rom: bytes, max_instructions: int = 50_000_000) -> None:
+    def __init__(
+        self,
+        rom: bytes,
+        max_instructions: int = 50_000_000,
+        posted: ami_hiflex_setup.PostStopped | None = None,
+    ) -> None:
+        """posted: a POST that stopped before setup (what it had set up is taken from it)."""
         _info, mods = ami.extract(rom)
         by_id = {m["id"]: m for m in mods if m.get("data")}
         m1, m2, m4 = by_id.get(1), by_id.get(2), by_id.get(4)
@@ -131,6 +192,37 @@ class Direct:
         )
         self.emu = emu
         uc = emu.uc
+        # VT82C686A: its hardware monitor's I/O window (function 4, 70h-74h), which the setup
+        # reads at the base POST chose (AMI's VIA boards: C00h), and the monitor's registers as
+        # POST set them (fan divisors)
+        mine = emu.pci_devices.get((7, 4))
+        theirs = posted.devices.get((7, 4)) if posted is not None else None
+        if posted is not None and mine is not None and theirs is not None:
+            if mine[0:4] == theirs[0:4] and theirs[0x74] & 1:
+                mine[0x70:0x75] = theirs[0x70:0x75]
+                emu.via_hwmon[:] = posted.via_hwmon
+        if posted is not None:  # (the 295h monitor as POST started it: PCChips 747 starts it
+            # with 40h = 01h, which makes 29h a fan when read)
+            emu.hwmon_winbond, emu.hwmon_started, divisors = posted.hwmon
+            emu.hwmon_divisors = dict(divisors)
+        # the SMBus host as POST set it (base and enable bits; nr120102: an ICH3's at C00h, a
+        # Winbond monitor at 2Dh behind it)
+        for key, bar in bios_emu.SMBUS_FUNCTIONS.items():
+            mine_f = emu.pci_devices.get(key)
+            theirs_f = posted.devices.get(key) if posted is not None else None
+            if mine_f is None or theirs_f is None or mine_f[0:4] != theirs_f[0:4]:
+                continue
+            if base := int.from_bytes(bytes(theirs_f[bar : bar + 2]), "little") & 0xFFF0:
+                for reg in (bar, bar + 1, 0x40, 0xD2):  # (enable: ICH 40h, VIA D2h)
+                    mine_f[reg] = theirs_f[reg]
+                emu.smbus_base = base
+        # an ITE environment controller the Setup Server reads at its own base (mov dx,805h ;
+        # out dx,al: PCChips' ITE boards at 800h), which POST sets in logical device 4
+        ite = ITE_MONITOR_INDEX.search(m1["data"])
+        if ite and not emu.ite_monitor:
+            for reg, value in ((0x60, ite.group(1)[0]), (0x61, 0x00), (0x30, 0x01)):
+                emu.sio_regs[(0x2E, 4, reg)] = value
+            emu._ite_monitor_base(0x2E)
         # the RunTime owns the F000 half from its real_off on: a module whose header also names
         # a place there (module 0B Int-10) is loaded elsewhere by POST, so it is left out
         rt_lo, rt_hi = base2, base2 + len(m2["data"])
@@ -155,6 +247,14 @@ class Direct:
             uc.mem_write(0x50166, bytes(uc.mem_read((base2 + sup + 4) & 0xFFFFF, 0x4C)))
         _install_vectors(emu, m2["data"], base2, _real(m2, rom)[1])
         _key_state(emu)
+        for m in mods:
+            if m.get("data"):
+                for index, value in monitor_writes(m["data"], _real(m, rom)[1]):
+                    emu._out(uc, 0x295, 1, index, None)
+                    emu._out(uc, 0x296, 1, value, None)
+                via = monitor_writes(m["data"], _real(m, rom)[1], VIA_MONITOR_WRITE)
+                for index, value in via:
+                    emu._out(uc, VIA_MONITOR_BASE + index, 1, value, None)
         uc.reg_write(UC_X86_REG_AX, 0x2000)  # AL = 0: the "enter setup" branch
         self.blob = rom + hints
         screen = self._as_text(emu.run(SEG4, entry, ss=0x0030, sp=0xFFFE, ds=0x5000, es=0x5000))

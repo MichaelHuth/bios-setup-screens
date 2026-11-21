@@ -33,6 +33,17 @@ TITLES = (
 DEL, F1 = [0x53, 0xD3], [0x3B, 0xBB]
 
 
+class PostStopped(ValueError):
+    """POST did not get to setup; what it had set up by then: the PCI configuration (devices),
+    the VT82C686A's hardware-monitor registers (via_hwmon) and the 295h monitor's layout,
+    start bit and fan divisors (hwmon)."""
+
+    def __init__(self, message: str, emu: bios_emu.BiosEmulator) -> None:
+        super().__init__(message)
+        self.devices, self.via_hwmon = emu.pci_devices, bytes(emu.via_hwmon)
+        self.hwmon = (emu.hwmon_winbond, emu.hwmon_started, dict(emu.hwmon_divisors))
+
+
 def _modules(rom: bytes) -> list[dict]:
     try:
         return ami.extract(rom)[1]
@@ -142,7 +153,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             hits = bios_emu.time_limits_hit.get()
             hits_before = len(hits) if hits is not None else 0
             retry.press_keys(DEL, when_text="DEL")
-            again = retry.run(0xF000, 0xFFF0)
+            again, before = retry.run(0xF000, 0xFFF0), screen.text()
             for _ in range(3):
                 if "SETUP UTIL" in again.text() and award_emu_setup.cursor(again) is not None:
                     break
@@ -150,6 +161,12 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                     break
                 if (left := deadline - time.monotonic()) <= 1:
                     break
+                if retry.stopped_reason == "instruction limit reached" and again.text() == before:
+                    # busy where the POST without the timer was, not waiting for a key: more
+                    # keys only cost minutes (Gigabyte 030808: 300 s, then the start without
+                    # POST anyway)
+                    break
+                before = again.text()
                 retry.max_seconds = int(left)
                 retry.press_keys(F1 if "F1 TO RUN SETUP" in again.text().upper() else DEL)
                 again = retry.resume()
@@ -158,8 +175,9 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             elif hits is not None:  # (a retry whose result is not used cuts nothing short)
                 del hits[hits_before:]
         if "SETUP UTIL" not in screen.text():
-            raise ValueError(
-                f"AMIBIOS Simple/Hi-Flex setup did not start (stopped: " f"{emu.stopped_reason})"
+            raise PostStopped(
+                f"AMIBIOS Simple/Hi-Flex setup did not start (stopped: " f"{emu.stopped_reason})",
+                emu,
             )
         emu.max_instructions = 50_000_000
         self.kind = "menu"
