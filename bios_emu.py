@@ -107,6 +107,7 @@ TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_i
 REFRESH_PER_TICK = 3640
 CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
 BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
+BEEP_READS = 1000  # port 61h reads (about 15 ms of refresh toggles) a beep lasts at least
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -1444,7 +1445,9 @@ class BiosEmulator:
         # reads of one CMOS register above the clock's with no CMOS write between: a POST
         # waiting there for what code left out sets (an SMI handler: Gigabyte 6VTX polls 7Eh)
         self.cmos_polled, self.cmos_polls = -1, 0
-        self.beeps = 0  # the speaker turned on (port 61h bits 0-1)
+        # beeps: the speaker on (port 61h bits 0-1) for BEEP_READS reads of port 61h at least
+        # (key clicks and timer 2 uses are shorter); refresh_reads counts all of them
+        self.beeps, self.beep_from, self.refresh_reads = 0, 0, 0
         self.stopped_reason = ""
         self._init_bda()
         self._clear_screen(0x07)
@@ -3842,6 +3845,7 @@ class BiosEmulator:
         if port == 0x61:
             self.port61 ^= 0x10  # refresh toggle, used by delay loops
             self.refresh_toggles += 1
+            self.refresh_reads += 1
             if (
                 self.refresh_toggles >= REFRESH_PER_TICK
                 and self.timer_irq
@@ -4463,8 +4467,11 @@ class BiosEmulator:
         elif port == 0x61:
             # bits 0-3 are written; 4-7 are status (refresh, timer 2, parity and I/O check
             # errors: none here)
-            if value & 3 == 3 and self.port61 & 3 != 3:  # the speaker on: a beep
-                self.beeps += 1
+            if value & 3 == 3 and self.port61 & 3 != 3:  # the speaker on
+                self.beep_from = self.refresh_reads
+            elif value & 3 != 3 and self.port61 & 3 == 3:  # and off: a beep if it was long
+                if self.refresh_reads - self.beep_from >= BEEP_READS:
+                    self.beeps += 1
                 if self.beeps > BEEPS:  # (an error beeped over and over: POST goes no further)
                     self.stopped_reason = "beeping without end (a POST error)"
                     uc.emu_stop()

@@ -153,12 +153,19 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
-def test_a_post_beeping_for_ever_stops() -> None:
-    # mov al,3 ; out 61h,al (speaker on) ; mov al,0 ; out 61h,al ; jmp to the start
-    emu = bios_emu.BiosEmulator(rom(b"\xb0\x03\xe6\x61\xb0\x00\xe6\x61\xeb\xf6"))
+@pytest.mark.parametrize("reads, stops", [(1000, True), (50, False)])
+def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
+    # mov al,3 ; out 61h,al (speaker on) ; mov cx,reads ; in al,61h ; loop (the in) ;
+    # mov al,0 ; out 61h,al ; jmp to the start. Short ones are key clicks: no beeps
+    code = b"\xb0\x03\xe6\x61\xb9" + struct.pack("<H", reads) + b"\xe4\x61\xe2\xfc"
+    code += b"\xb0\x00\xe6\x61\xeb\xef"
+    emu = bios_emu.BiosEmulator(rom(code), max_instructions=20_000_000)
     emu.run(0xF000, 0xFFF0)
-    assert emu.stopped_reason == "beeping without end (a POST error)"
-    assert emu.beeps == bios_emu.BEEPS + 1
+    if stops:
+        assert emu.stopped_reason == "beeping without end (a POST error)"
+        assert emu.beeps == bios_emu.BEEPS + 1
+    else:
+        assert emu.stopped_reason == "instruction limit reached" and emu.beeps == 0
 
 
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
