@@ -1769,6 +1769,9 @@ class BiosEmulator:
         body = code.lstrip(bytes(PREFIXES - {0xF2, 0xF3}))
         if body[:1] in (b"\xf2", b"\xf3") or (body[:1] and 0xA4 <= body[0] <= 0xAF):
             return
+        if len(body) >= 2 and body[0] not in (0xA0, 0xA1) and body[1] & 0xC7 != 0x06:
+            return  # (through a register, not the tick count's own address: a memory test
+            # running over the BIOS data area, Copam PC-501's cmp ax,es:[si])
         self.tick_reads += 1
         if self.tick_reads % 4 == 0:
             count = (struct.unpack("<I", uc.mem_read(0x46C, 4))[0] + 1) % 0x1800B0  # one day

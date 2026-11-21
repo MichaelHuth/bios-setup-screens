@@ -228,6 +228,16 @@ def test_timer_channel_2_has_counted_a_little_at_a_latch_right_after_its_count()
     assert memory(emu, OUT)[0] < 0xFF  # (Copam PC-501's timer test wants it moving)
 
 
+def test_the_tick_count_moves_for_reads_at_its_address_not_through_a_register() -> None:
+    # mov ax,[46Ch] eight times, then mov si,46Ch and mov ax,[si] eight times
+    direct = b"\xa1\x6c\x04" * 8 + b"\xa3" + struct.pack("<H", OUT)
+    indexed = b"\xbe\x6c\x04" + b"\x8b\x04" * 8 + b"\xa3" + struct.pack("<H", OUT + 2)
+    emu = bios_emu.BiosEmulator(rom(DS0 + direct + indexed + HALT))
+    emu.run(0xF000, 0xFFF0)
+    after_direct, after_indexed = struct.unpack("<HH", memory(emu, OUT, 4))
+    assert after_direct > 0 and after_indexed == after_direct  # (a memory test sees no change)
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
