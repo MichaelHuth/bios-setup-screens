@@ -325,6 +325,14 @@ def test_the_start_bit_and_a_fan_read_choose_winbond_unless_ite_came_first(
     assert memory(emu, OUT) == bytes((fan,)) and emu.hwmon_winbond is not ite_first
 
 
+def test_a_winbonds_second_temperature_in_its_bank_1() -> None:
+    # bank select 4Eh = 81h, then 50h: temperature 2, 32 C (s147r13's CPU temperature)
+    code = DS0 + hwmon_write(0x4E, 0x81) + hwmon_read(0x50, OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((32,))
+
+
 @pytest.mark.parametrize("config, winbond", [(0x00, True), (0x80, True), (0x01, None)])
 def test_the_lm78_configuration_chooses_the_winbond_layout(config: int, winbond: bool) -> None:
     # 40h = 00h (stopped) or 80h (initialise) only on an LM78/Winbond monitor (ITE's 40h is a
@@ -352,6 +360,21 @@ def test_an_ite_monitor_answers_at_the_base_of_its_logical_device_4() -> None:
     emu = bios_emu.BiosEmulator(rom(code + HALT))
     emu.run(0xF000, 0xFFF0)
     assert memory(emu, OUT, 2) == b"\xff\x64"  # then 1.6 V
+
+
+def test_a_winbond_monitor_answers_at_the_base_of_its_logical_device_0bh() -> None:
+    def sio(index: int, value: int) -> bytes:
+        return b"\xb0" + bytes((index,)) + b"\xe6\x2e\xb0" + bytes((value,)) + b"\xe6\x2f"
+
+    def read(index: int) -> bytes:  # mov dx,535h ; mov al,index ; out dx,al ; inc dx ; in al,dx
+        return b"\xba\x35\x05\xb0" + bytes((index,)) + b"\xee\x42\xec"
+
+    # logical device 0Bh at 530h (s147r13): Winbond's layout, fan 1 at 28h (4500 RPM)
+    code = DS0 + sio(0x07, 0x0B) + sio(0x60, 0x05) + sio(0x61, 0x30) + sio(0x30, 0x01)
+    code += read(0x28) + store_al(OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((150,)) and emu.hwmon_winbond is True
 
 
 def test_a_vt82c686a_monitor_answers_in_the_window_post_opened() -> None:

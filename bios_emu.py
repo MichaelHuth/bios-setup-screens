@@ -1488,6 +1488,7 @@ class BiosEmulator:
         self.hwmon_divisors = dict(HWMON_DIVISORS)
         self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
         self.hwmon_started = False  # 40h = 01h written (Winbond's start bit or an ITE limit)
+        self.hwmon_bank = 0  # Winbond's bank (4Eh bits 0-2): temperatures 2 and 3 at 50h/51h
         self.via_hwmon = bytearray(0x80)  # VT82C686A's monitor registers (see VIA_HWMON)
         for index, value in VIA_HWMON.items():
             self.via_hwmon[index] = value
@@ -3963,6 +3964,8 @@ class BiosEmulator:
                 self.hwmon_winbond = True
             layout = HWMON_WINBOND if self.hwmon_winbond else HWMON_ITE
             value = HWMON_VOLTAGES.get(index, layout.get(index))
+            if self.hwmon_winbond and self.hwmon_bank in (1, 2) and index in (0x50, 0x51):
+                value = 0x20 if index == 0x50 else 0x00  # temperatures 2 and 3: 32.0 C
             if value is not None:
                 return value
             if index in self.hwmon_divisors:
@@ -4203,11 +4206,17 @@ class BiosEmulator:
         """The base of an ITE environment controller (logical device 4: 60h-61h, on with 30h
         bit 0) as set through the config port: its address and data ports (base + 5 and 6) are
         the monitor's, as 295h/296h. Only bases from 400h on (PCChips' ITE boards: 800h; a
-        serial port is logical device 4 of other Super I/O chips)."""
+        serial port is logical device 4 of other Super I/O chips). A Winbond's hardware monitor
+        is its logical device 0Bh the same way (s147r13: 530h), in Winbond's layout."""
         regs = self.sio_regs
-        base = regs.get((config, 4, 0x60), 0) << 8 | regs.get((config, 4, 0x61), 0)
-        on = regs.get((config, 4, 0x30), 0) & 1
-        self.ite_monitor = base & 0xFFF8 if on and base >= 0x400 else 0
+        self.ite_monitor = 0
+        for ldn in (4, 0x0B):
+            base = regs.get((config, ldn, 0x60), 0) << 8 | regs.get((config, ldn, 0x61), 0)
+            if regs.get((config, ldn, 0x30), 0) & 1 and base >= 0x400:
+                self.ite_monitor = base & 0xFFF8
+                if ldn == 0x0B and self.hwmon_winbond is None:
+                    self.hwmon_winbond = True
+                return
 
     def _div_overflow(self, uc: Uc) -> bool:
         """A 32-bit DIV whose quotient does not fit: BIOSes measure the CPU clock with RDTSC
@@ -4443,7 +4452,7 @@ class BiosEmulator:
         if port in (0x2F, 0x4F) and size == 1:
             key = self._sio_key(port - 1)
             self.sio_regs[key] = value & 0xFF
-            if key[1:] in ((4, 0x30), (4, 0x60), (4, 0x61)):
+            if key[1] in (4, 0x0B) and key[2] in (0x30, 0x60, 0x61):
                 self._ite_monitor_base(port - 1)
             return
         if port == 0xCF8 and size == 1:  # mechanism #2 (see _in)
@@ -4461,6 +4470,8 @@ class BiosEmulator:
                 self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
         if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
             self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
+        if port == 0x296 and self.hwmon_index & 0x7F == 0x4E:  # Winbond's bank select
+            self.hwmon_bank = value & 0x07
         if (
             port == 0x296
             and self.hwmon_winbond is None
