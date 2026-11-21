@@ -243,16 +243,30 @@ def test_the_first_register_only_one_chip_has_chooses_the_layout() -> None:
     assert memory(emu, OUT) == b"\xbc" and emu.hwmon_winbond is False
 
 
+@pytest.mark.parametrize("ite_first, fan", [(False, 225), (True, 0x26)])
+def test_the_start_bit_and_a_fan_read_choose_winbond_unless_ite_came_first(
+    ite_first: bool, fan: int
+) -> None:
+    # 40h = 01h, then 29h read: Winbond's fan 2 (3000 RPM, divisor 2); with ITE's 13h selected
+    # in between (PCChips M586LMR) ITE's temperature there (38 C)
+    code = DS0 + hwmon_write(0x40, 0x01) + (hwmon_read(0x13, OUT + 1) if ite_first else b"")
+    emu = bios_emu.BiosEmulator(rom(code + hwmon_read(0x29, OUT) + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((fan,)) and emu.hwmon_winbond is not ite_first
+
+
 @pytest.mark.parametrize("config, winbond", [(0x00, True), (0x80, True), (0x01, None)])
 def test_the_lm78_configuration_chooses_the_winbond_layout(config: int, winbond: bool) -> None:
     # 40h = 00h (stopped) or 80h (initialise) only on an LM78/Winbond monitor (ITE's 40h is a
-    # limit; 01h comes from ITE boards too): then 29h is fan 2, 3000 RPM with the power-on
-    # divisor 2, and 27h a temperature, 38 C
-    code = DS0 + hwmon_write(0x40, config) + hwmon_read(0x29, OUT) + hwmon_read(0x27, OUT + 1)
-    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    # limit; 01h comes from ITE boards too, and leaves it open): then 29h is fan 2, 3000 RPM
+    # with the power-on divisor 2, and 27h a temperature, 38 C
+    emu = bios_emu.BiosEmulator(rom(DS0 + hwmon_write(0x40, config) + HALT))
     emu.run(0xF000, 0xFFF0)
     assert emu.hwmon_winbond is winbond
     if winbond:
+        code = DS0 + hwmon_write(0x40, config) + hwmon_read(0x29, OUT) + hwmon_read(0x27, OUT + 1)
+        emu = bios_emu.BiosEmulator(rom(code + HALT))
+        emu.run(0xF000, 0xFFF0)
         assert memory(emu, OUT, 2) == bytes((225, 38))
 
 

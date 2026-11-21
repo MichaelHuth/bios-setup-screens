@@ -34,12 +34,14 @@ DEL, F1 = [0x53, 0xD3], [0x3B, 0xBB]
 
 
 class PostStopped(ValueError):
-    """POST did not get to setup; what it had set up by then: the PCI configuration (devices)
-    and the VT82C686A's hardware-monitor registers (via_hwmon)."""
+    """POST did not get to setup; what it had set up by then: the PCI configuration (devices),
+    the VT82C686A's hardware-monitor registers (via_hwmon) and the 295h monitor's layout,
+    start bit and fan divisors (hwmon)."""
 
     def __init__(self, message: str, emu: bios_emu.BiosEmulator) -> None:
         super().__init__(message)
         self.devices, self.via_hwmon = emu.pci_devices, bytes(emu.via_hwmon)
+        self.hwmon = (emu.hwmon_winbond, emu.hwmon_started, dict(emu.hwmon_divisors))
 
 
 def _modules(rom: bytes) -> list[dict]:

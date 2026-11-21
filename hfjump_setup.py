@@ -201,6 +201,10 @@ class Direct:
             if mine[0:4] == theirs[0:4] and theirs[0x74] & 1:
                 mine[0x70:0x75] = theirs[0x70:0x75]
                 emu.via_hwmon[:] = posted.via_hwmon
+        if posted is not None:  # (the 295h monitor as POST started it: PCChips 747 starts it
+            # with 40h = 01h, which makes 29h a fan when read)
+            emu.hwmon_winbond, emu.hwmon_started, divisors = posted.hwmon
+            emu.hwmon_divisors = dict(divisors)
         # the SMBus host as POST set it (base and enable bits; nr120102: an ICH3's at C00h, a
         # Winbond monitor at 2Dh behind it)
         for key, bar in bios_emu.SMBUS_FUNCTIONS.items():

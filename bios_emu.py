@@ -1478,6 +1478,7 @@ class BiosEmulator:
         self.headland_index, self.headland = 0, bytearray(256)
         self.hwmon_divisors = dict(HWMON_DIVISORS)
         self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
+        self.hwmon_started = False  # 40h = 01h written (Winbond's start bit or an ITE limit)
         self.via_hwmon = bytearray(0x80)  # VT82C686A's monitor registers (see VIA_HWMON)
         for index, value in VIA_HWMON.items():
             self.via_hwmon[index] = value
@@ -3814,6 +3815,10 @@ class BiosEmulator:
             return self.hwmon_index & 0x7F  # busy (bit 7; AMIBIOS 7 waits for it, s85mir3l)
         if port == 0x296 and size == 1:
             index = self.hwmon_index & 0x7F
+            if self.hwmon_winbond is None and self.hwmon_started and 0x27 <= index <= 0x2A:
+                # started with 40h = 01h and read at Winbond's temperature and fans before
+                # any register only ITE has (PCChips 747; M586LMR selects ITE's 13h first)
+                self.hwmon_winbond = True
             layout = HWMON_WINBOND if self.hwmon_winbond else HWMON_ITE
             value = HWMON_VOLTAGES.get(index, layout.get(index))
             if value is not None:
@@ -4351,6 +4356,8 @@ class BiosEmulator:
             and value & 0xFF in HWMON_WINBOND_CONFIG
         ):
             self.hwmon_winbond = True
+        if port == 0x296 and self.hwmon_index & 0x7F == 0x40 and value & 0xFF == 0x01:
+            self.hwmon_started = True  # (Winbond's start bit, or an ITE limit: see _in)
         if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
             if reg not in VIA_HWMON or reg == 0x47:  # (the readings are the chip's own)
                 self.via_hwmon[reg] = value & 0xFF
