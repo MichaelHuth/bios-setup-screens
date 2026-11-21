@@ -13947,7 +13947,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s26r26-64e4b696153e7820134349.zip",
   "screens": 9,
-  "text": "06b6fedafb868e9f"
+  "text": "90ef73691750356b"
  },
  "74a336321a074f1210d39760087e01a544b261ede18b1cd86b1c6912e493ae50": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -17832,8 +17832,10 @@
   "text": "218ebd62e2ee5b7b"
  },
  "94a06a434dc7c928e4f28a90e90a997a4e926c927cd95d7b93e7b72c0a127b8b": {
+  "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "fts-flashbiosupdateforpcd4hvlpcd4tvlscenic4-320334-157.exe-5f660c006f33e149124036.exe.bin",
-  "result": "unsupported"
+  "screens": 4,
+  "text": "a6f9c31e4be1a469"
  },
  "94abb7f7f8f32def386a1540d97dcb3ac45041e3acc3280255beaded0f409cf8": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -24770,8 +24772,10 @@
   "text": "c79cb9e98177bdf1"
  },
  "cc37a459a07ac2af386d0ba55548e72c72821c86e2da7ca0827cac5f7ea9f94d": {
+  "bios": "early Award Modular BIOS (v3.x-4.50, before the screen scrip",
   "name": "fts-biosupdated824noflashbiosepromv320-320334-160.bin-5f6661e2a822a400211518.bin",
-  "result": "unsupported"
+  "screens": 4,
+  "text": "26ffebf9cc24c5bc"
  },
  "cc3c8dd0ac3e2efdf54cb3f0a8ea1034730bb9b767d07283fe34ab1a9f02f38a": {
   "name": "7502875-64fca039d04c2091814343.exe.bin",
