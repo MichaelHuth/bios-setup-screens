@@ -3773,6 +3773,24 @@ class BiosEmulator:
     def _in(self, uc: Uc, port: int, size: int, _user: object) -> int:
         if port in self.io_reads:
             return self.io_reads[port]
+        if port == 0x61:  # (first: delay loops read it millions of times)
+            self.port61 ^= 0x10  # refresh toggle, used by delay loops
+            self.refresh_toggles += 1
+            self.refresh_reads += 1
+            if (
+                self.refresh_toggles >= REFRESH_PER_TICK
+                and self.timer_irq
+                and self.pit0_running
+                and not self.irq0_pending
+                and not self.pic_mask & 1
+                and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200
+                and not uc.reg_read(UC_X86_REG_CR0) & 1
+            ):
+                self.refresh_cut = True  # a tick has passed: the slice ends, IRQ 0 comes
+                uc.emu_stop()
+            if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
+                self.port61 ^= 0x20
+            return self.port61
         # HP's AMIBIOS 7 boards (BCM IN845 Rev 1.14) read a hardware-monitor data port
         # and take all ones for a stopped CPU fan, then halt; 00 is "no reading yet"
         if port == 0x0A59:
@@ -3850,24 +3868,6 @@ class BiosEmulator:
             return self.opti_regs[index] if index < 0x12 or index >= 0x20 else 0xFF
         if port == 0xA9 and self.via_wrote:
             return self.via_regs[self.via_index]
-        if port == 0x61:
-            self.port61 ^= 0x10  # refresh toggle, used by delay loops
-            self.refresh_toggles += 1
-            self.refresh_reads += 1
-            if (
-                self.refresh_toggles >= REFRESH_PER_TICK
-                and self.timer_irq
-                and self.pit0_running
-                and not self.irq0_pending
-                and not self.pic_mask & 1
-                and uc.reg_read(UC_X86_REG_EFLAGS) & 0x200
-                and not uc.reg_read(UC_X86_REG_CR0) & 1
-            ):
-                self.refresh_cut = True  # a tick has passed: the slice ends, IRQ 0 comes
-                uc.emu_stop()
-            if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
-                self.port61 ^= 0x20
-            return self.port61
         if port == 0x63:  # (PC Partner H8010's AMI setup waits for a high, then a low)
             self.port63 ^= 0x10
             return self.port63
