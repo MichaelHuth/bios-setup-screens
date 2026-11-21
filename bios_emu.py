@@ -106,6 +106,7 @@ TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_i
 # between two timer interrupts expects about 1820 cycles (Award 286: "REFRESH TIMING ERROR")
 REFRESH_PER_TICK = 3640
 CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
+BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -1443,6 +1444,7 @@ class BiosEmulator:
         # reads of one CMOS register above the clock's with no CMOS write between: a POST
         # waiting there for what code left out sets (an SMI handler: Gigabyte 6VTX polls 7Eh)
         self.cmos_polled, self.cmos_polls = -1, 0
+        self.beeps = 0  # the speaker turned on (port 61h bits 0-1)
         self.stopped_reason = ""
         self._init_bda()
         self._clear_screen(0x07)
@@ -4459,6 +4461,11 @@ class BiosEmulator:
         elif port == 0x61:
             # bits 0-3 are written; 4-7 are status (refresh, timer 2, parity and I/O check
             # errors: none here)
+            if value & 3 == 3 and self.port61 & 3 != 3:  # the speaker on: a beep
+                self.beeps += 1
+                if self.beeps > BEEPS:  # (an error beeped over and over: POST goes no further)
+                    self.stopped_reason = "beeping without end (a POST error)"
+                    uc.emu_stop()
             self.port61 = self.port61 & 0x30 | value & 0x0F
             # gate on: channel 2 counts down. The hook stays while a program toggles the gate
             # (a beep does so thousands of times) and is removed between two runs.

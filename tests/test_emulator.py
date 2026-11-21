@@ -146,6 +146,14 @@ def test_a_post_polling_a_cmos_register_nothing_changes_stops() -> None:
     assert emu.stopped_reason == "polling CMOS register 7Eh"
 
 
+def test_a_post_beeping_for_ever_stops() -> None:
+    # mov al,3 ; out 61h,al (speaker on) ; mov al,0 ; out 61h,al ; jmp to the start
+    emu = bios_emu.BiosEmulator(rom(b"\xb0\x03\xe6\x61\xb0\x00\xe6\x61\xeb\xf6"))
+    emu.run(0xF000, 0xFFF0)
+    assert emu.stopped_reason == "beeping without end (a POST error)"
+    assert emu.beeps == bios_emu.BEEPS + 1
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))
