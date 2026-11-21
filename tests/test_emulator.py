@@ -125,6 +125,22 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
 
 
+def test_an_alis_m7101_smbus_host_on_a_board_modelled_otherwise() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8008] = struct.pack("<HHHH", 0x10B9, 0x7101, 0x10B9, 0x1533)  # (its table)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.chip_smbus == "m7101" and (17, 0) in emu.pci_devices
+    for reg, value in ((0x14, 0x5001), (0xE0, 0x01)):  # SMBus base 5000h, host on
+        emu.pci_addr = 0x80000000 | 17 << 11 | reg & 0xFC
+        emu._pci_write(0xCFC + (reg & 3), 2 if reg == 0x14 else 1, value)
+    assert emu.smbus_base == 0x5000
+    # a byte-data read of the GL520SM's chip ID at 2Dh: address, command, protocol, start
+    for off, value in ((0, 0xFF), (3, 0x5B), (7, 0x00), (1, 0x20), (2, 0xFF)):
+        emu._out(emu.uc, 0x5000 + off, 1, value, None)
+    assert emu._in(emu.uc, 0x5000, 1, None) == 0x14  # idle, done
+    assert emu._in(emu.uc, 0x5004, 1, None) == 0x20
+
+
 def test_the_pm_smbus_host_reaches_the_monitor() -> None:
     # the VIA/AMD host at PM I/O +E0h: the GL520SM at 2Dh written (fan divisors 2, 2 in 0Fh),
     # then its fan word at 07h read (+E6h, +E7h): 4528 and 3000 RPM

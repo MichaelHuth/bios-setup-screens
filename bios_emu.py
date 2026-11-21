@@ -111,6 +111,7 @@ DELAY_PORTS = frozenset((0xE0, 0xEB, 0xED))
 CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
 BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
 BEEP_READS = 1000  # port 61h reads (about 15 ms of refresh toggles) a beep lasts at least
+M7101_IDLE = 0x04  # the ALi M7101 SMBus host's status: idle (_m7101_write)
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -341,6 +342,9 @@ VIA_HOSTS = (
 # BARs not listed are not implemented and read 0.
 _IO16, _IO8 = 0xFFFFFFF1, 0xFFFFFFF9
 PCI_BARS = {
+    0x7101: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # (ALi M7101: ACPI 64 ports, SMBus 32)
+    0x1533: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # (the M7101's, where the model has the
+    0x1543: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # M1533/M1543 at 3.0: see m7101_key)
     0x7010: {0x20: _IO16},
     0x7111: {0x20: _IO16},
     0x2411: {0x20: _IO16},
@@ -1561,6 +1565,26 @@ class BiosEmulator:
         )
         self.chip_smbus = "sis" if sis else "ali" if ali else ""
         self.chip_smbus_end, self.chip_smbus_bar = False, bytearray(2)
+        # an ALi M7101 power management unit the ROM names (in a table of its devices) on a
+        # board modelled with another chipset (PCChips' ALi boards get the 440BX: M816LMR,
+        # M817LMR): at device 11h, its SMBus host in its own layout (_m7101_write)
+        self.m7101 = bytearray(8)
+        self.m7101[0] = M7101_IDLE
+        self.m7101_key = (17, 0)
+        if ali and int.from_bytes(chip_south[2:4], "little") in (0x1533, 0x1543):
+            # (an M1533/M1543 board modelled with the M1563's set: what its POST writes to
+            # device 3 is the M7101's, SMBus base at 14h - PCChips M751: 440h)
+            self.chip_smbus, self.m7101_key = "m7101", (3, 0)
+        named = rom + hints
+        if (
+            not self.chip_smbus
+            and not any(c[0:2] == b"\xb9\x10" for c in self.pci_devices.values())
+            and (17, 0) not in self.pci_devices
+            and _named(named, 0x10B9, 0x7101)
+            and _named(named, 0x10B9, 0x1533)
+        ):
+            self.pci_devices[(17, 0)] = _config(0x10B9, 0x7101, 0x068000)
+            self.chip_smbus = "m7101"
         self.sis_cleared_reads = -1  # reads since the SiS status was cleared (-1: not cleared)
         if self.chip_smbus:
             self.pam_valid = False  # (no Intel PAM: C0000-FFFFF plain RAM)
@@ -2300,6 +2324,13 @@ class BiosEmulator:
                 # VIA boards modelled with a 686 set it there (PCChips M768VMR: 5F00h)
                 base = int.from_bytes(bytes(cfg[0x80:0x82]), "little") & 0xFFF0
                 self.smbus_base = base or None
+            if (
+                key == self.m7101_key
+                and self.chip_smbus == "m7101"
+                and (reg <= 0xE0 < reg + size or reg <= 0x15 and 0x14 < reg + size)
+            ):  # the M7101's SMBus base (14h), on with E0h bit 0
+                base = int.from_bytes(bytes(cfg[0x14:0x16]), "little") & 0xFFF0
+                self.smbus_base = base if base and cfg[0xE0] & 1 else None
         if self.sis496 and (self.pci_addr & 0x80FFFF00) == 0x80002800:  # SiS 85C496 (0:5.0)
             if reg <= 0x45 and 0x44 < reg + size and cfg is not None:
                 self._sis496_shadow(cfg[0x44], cfg[0x45])
@@ -3737,6 +3768,31 @@ class BiosEmulator:
             | (port & 0xFC)
         )
 
+    def _m7101_write(self, off: int, value: int) -> None:
+        """The ALi M7101's SMBus host (Linux i2c-ali15x3): 0 status (written ones clear: idle
+        04h, busy 08h, done 10h, device error 20h), 1 control (protocol in bits 4-6: 1 byte,
+        2 byte data, 3 word), 2 start (any write), 3 slave address (bit 0: read), 4/5 data,
+        7 command. Answered from the SPD EEPROMs and the other SMBus devices."""
+        regs = self.m7101
+        if off == 0:
+            regs[0] = regs[0] & ~value & 0xFF | M7101_IDLE
+            return
+        if off != 2:
+            regs[off] = value & 0xFF
+            return
+        address, protocol = regs[3] >> 1, regs[1] >> 4 & 7
+        device = self.spd.get(address, self.smbus_devices.get(address))
+        if device is None:
+            regs[0] = M7101_IDLE | 0x20
+            return
+        if regs[3] & 1:
+            regs[4], regs[5] = self._device_word(address, device, regs[7])
+        elif address in self.smbus_devices and protocol in (2, 3):
+            self._device_store(address, regs[7], regs[4])
+            if protocol == 3:
+                self._device_store(address, regs[7] + 1 & 0xFF, regs[5])
+        regs[0] = M7101_IDLE | 0x10
+
     def _chip_smbus_read(self, off: int) -> int | None:
         """A read of a SiS 96x / ALi M1563 SMBus register, or None for the host model's own.
         The end of a transaction the BIOS cleared before it looked comes again when polled (a
@@ -3745,6 +3801,8 @@ class BiosEmulator:
         it on others). After the BIOS clears the status register (FFh), the first read gives
         the old answer and the next ones bit 7 as well, until a new transaction starts: MSI
         6567's POST clears it and then polls for bit 7, ASUS's SiS 645 boards read it once."""
+        if self.chip_smbus == "m7101":
+            return self.m7101[off] if off < 8 else 0xFF
         sis = self.chip_smbus == "sis"
         if sis and off != 0:
             src = SIS_SMBUS_READ.get(off)
@@ -3766,6 +3824,10 @@ class BiosEmulator:
     def _chip_smbus_write(self, off: int, value: int) -> bool:
         """A write to a SiS 96x / ALi M1563 SMBus register: True when handled here (SiS),
         False for the host model (ALi: the VIA layout, with the end owed after a start)."""
+        if self.chip_smbus == "m7101":
+            if off < 8:
+                self._m7101_write(off, value)
+            return True
         if self.chip_smbus != "sis":
             if off == 2 and value & 0x40 or off == 7:  # a start, a block byte
                 self.chip_smbus_end = True
