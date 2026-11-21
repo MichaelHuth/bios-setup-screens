@@ -220,6 +220,14 @@ def test_register_11h_through_ech_shows_the_bios_segment_at_e0000() -> None:
     assert memory(emu, OUT) == code[:1]  # (F000:E000, the code's first byte, at E000:E000)
 
 
+def test_timer_channel_2_has_counted_a_little_at_a_latch_right_after_its_count() -> None:
+    # gate on ; channel 2 LSB only, mode 0 ; count FFh ; latch at once ; read
+    code = b"\xe4\x61\x0c\x01\xe6\x61\xb0\x90\xe6\x43\xb0\xff\xe6\x42\xb0\x80\xe6\x43\xe4\x42"
+    emu = bios_emu.BiosEmulator(rom(DS0 + code + store_al(OUT) + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT)[0] < 0xFF  # (Copam PC-501's timer test wants it moving)
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))

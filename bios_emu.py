@@ -835,6 +835,7 @@ KEYS = {
 # instructions with it to measure the CPU speed. The time passing is estimated from 486 cycle
 # counts of the instructions run, for a 33 MHz CPU.
 PIT_TICKS_PER_CYCLE = 1.193182 / 33
+PIT2_LATCH_CYCLES = 60  # (about two ticks: what channel 2 has counted at a latch at least)
 PREFIXES = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65, 0x66, 0x67, 0xF0, 0xF2, 0xF3}
 
 
@@ -4756,6 +4757,9 @@ class BiosEmulator:
             self.pit1_count = self.pit1_reload
         elif port == 0x43 and value >> 6 == 2 and not value & 0x30:  # latch channel 2
             self._pit_used()
+            if self.pit_active:  # (counting: a few ticks on at least, as the code to here
+                # took that long; Copam PC-501's timer test latches right after the count)
+                self.pit_cycles = max(self.pit_cycles, PIT2_LATCH_CYCLES)
             self.pit2_latch, self.pit_read_high = self._pit_value(), False
         elif port == 0x43 and value >> 6 == 2:  # channel 2 mode: a new count follows
             self.pit_read_high = self.pit_write_high = False
