@@ -355,7 +355,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "817l-m-r-bios-20020812s-2m-ami-6350f4f8998c9669525935.zip",
   "screens": 9,
-  "text": "9b336f1b1c37d59b"
+  "text": "110b90e739a2e52d"
  },
  "0353dfd6b67fc0827b989d362b876afe0721742d09ddb907798e04b66621d3b5": {
   "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
@@ -3495,7 +3495,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "010913s-634db2342ce1c072285471.rom",
   "screens": 9,
-  "text": "913b2d8135b5d42d"
+  "text": "5332ff0bf6174637"
  },
  "1db9347eb783f57b05aab30e02b4f1828815fa87745390c7dc33c1d088e48f17": {
   "name": "microtec-655a5e1bce16d294060428.zip",
@@ -12916,8 +12916,10 @@
   "result": "unsupported"
  },
  "6c49555c353e9ef4e2de4e476ea1c9b0a352665634f65960c49f12cec38ff920": {
+  "bios": "A BIOS with a pull-down menu setup (\"586 System BIOS 1998\": ",
   "name": "eagle-powertx-657c53b6a3b35358610970.zip",
-  "result": "unsupported"
+  "screens": 9,
+  "text": "7c6d8a70f8bae8dd"
  },
  "6c4c62aea3e29ba68c11f717fff2c8ed05c8e66a02bcea240f6682177b5cfeff": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
@@ -17523,7 +17525,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "816lmr-bios-20000918s-2m-ami-6350f459a1ae3800148546.zip",
   "screens": 9,
-  "text": "d504702bb8db7710"
+  "text": "df664d2dc572e4c1"
  },
  "92653b909945870b3e9099b3ad0f2c34333e2a56c3683f985bc3f5cf391f85d3": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
@@ -23537,7 +23539,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "754series-bios-20010822s-2m-ami-634e996587af3923394225.zip",
   "screens": 9,
-  "text": "47df57e4995e074f"
+  "text": "41573e276b74a889"
  },
  "c19f871bf2e502c4d062f86dfa0ef8cee95c9db16e758f5c22e648acdef18817": {
   "bios": "Award Medallion BIOS 6.0: items from the system BIOS, texts ",
@@ -25217,7 +25219,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
   "name": "m587lmr-643daa28e28ef504047705.zip",
   "screens": 8,
-  "text": "8a7f963827830499"
+  "text": "025be115f5a24196"
  },
  "cfd40585fae4a741b1e2e48c0b8b0e0576ab41a7591497bdcec21f72fb205373": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -26133,7 +26135,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "751-bios-19990210s-2m-ami-612cef69c737b054481249.zip",
   "screens": 9,
-  "text": "9aa66b257d9a7167"
+  "text": "1428debf4bd03a3d"
  },
  "d7bece67c55524a9b67f6caf5203b5492780bcd2a1e8b12e15aa8069c46f27c5": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
@@ -28251,7 +28253,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "011226s-635a41197cebd562541069.zip",
   "screens": 9,
-  "text": "b7b48238aa36121e"
+  "text": "74f64751f7cf855e"
  },
  "e945ca15153727cca8909a72725b3056305eee324e1e802d14434307db636170": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
