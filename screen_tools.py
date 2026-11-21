@@ -60,6 +60,7 @@ import mylex_setup
 import novell_setup
 import ncr_setup
 import prompt_setup
+import pulldown_setup
 import quadtel_setup
 import ami_qa_setup
 import uefi_setup
@@ -1839,6 +1840,8 @@ def _setup_screens(
                 return _texas_micro_screens(path, raw, pages)
             if prompt_setup.family(raw) is not None:  # a prompt, a key and a screen
                 return _prompt_screens(path, raw, pages)
+            if pulldown_setup.is_pulldown(raw):  # a menu bar of pull-down lists (1998)
+                return _pulldown_screens(path, raw, pages)
             if tandon_setup.is_tandon(raw):  # Tandon's own SYSTEM SETUP (early 1990s)
                 return _tandon_screens(path, raw, pages)
             if chips_setup.is_chips_scat(raw):  # C&T's own BIOS for SCAT 286 boards
@@ -2540,6 +2543,24 @@ def _prompt_screens(path: Path, rom: bytes, pages: str | None) -> dict:
     result["note"] = (
         "Values are what the setup showed for an empty CMOS. The PC is emulated: memory, "
         "drives and the display are what POST found in the emulator. Images are attached."
+    )
+    return result
+
+
+def _pulldown_screens(path: Path, rom: bytes, pages: str | None) -> dict:
+    screens = _cached_screens(rom, lambda: _with_post(pulldown_setup.PulldownSetup(rom)))
+    result = _mr_screens(path, rom, pages, screens)
+    result["bios"] = (
+        "A BIOS with a pull-down menu setup (\"586 System BIOS 1998\": General, Peripherals, "
+        "PnP/PCI, Hard Disk, Misc., Exit), captured by running the whole ROM in an x86 "
+        "emulator (POST stops at the CMOS error and F1 starts the setup; each tab's list "
+        "with Enter, the dialog of each entry marked ► with Enter)"
+    )
+    result["note"] = (
+        "Values are what the setup showed for an empty CMOS. The PC is emulated: CPU, "
+        "memory and drives are what POST found in the emulator. Where the image's reset "
+        "vector jumps into a block of zeros (a damaged dump), POST was started at F000:E05B. "
+        "Images are attached."
     )
     return result
 

@@ -19,7 +19,9 @@ import bios_summary
 import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
+import pulldown_setup
 import uefi_setup
+from textscreen import Screen
 from builders import (
     AmiModule,
     FfvFile,
@@ -451,3 +453,40 @@ def test_the_bios_summary_reports_the_award_cf_bug() -> None:
     image[0x2000 : 0x2000 + len(CF_MASK)] = CF_MASK
     bugs = bios_summary.summarize(bytes(image))["known_bugs"]
     assert bugs[0]["verdict"].startswith("affected")
+
+
+def test_pulldown_setup_reads_its_bar_and_list_and_where_post_starts() -> None:
+    lines = [
+        " ┌" + "─" * 76 + "┐",
+        " │    General    Peripherals    PnP/PCI    Hard Disk    Misc.     Exit        │",
+        " └─╔══════════════════════════════╗" + "─" * 43 + "┘",
+        "░░░║                              ║",
+        "░░░║  Load Default CMOS Setting   ║",
+        "░░░║  Set Date                 ►  ║",
+        "░░░║  [√] Internal Cache          ║",
+        "░░░╚══════════════════════════════╝",
+    ]
+    screen = Screen()
+    for row, line in enumerate(lines):
+        for col, ch in enumerate(line):
+            screen.put(col, row, 0x10 if ch == "►" else ch.encode("cp437")[0], 0x07)
+    assert pulldown_setup.menu_bar(screen) == [
+        "General",
+        "Peripherals",
+        "PnP/PCI",
+        "Hard Disk",
+        "Misc.",
+        "Exit",
+    ]
+    entries = pulldown_setup.pulldown_entries(screen)
+    assert entries == [
+        "Load Default CMOS Setting",
+        "Set Date                 ►",
+        "[√] Internal Cache",
+    ]
+    # a reset vector's near jump into zeros (a damaged dump): POST from F000:E05B
+    rom = bytearray(0x10000)
+    rom[0xFFF0:0xFFF3] = b"\xe9\x00\xc0"
+    assert pulldown_setup._entry(bytes(rom)) == 0xE05B
+    rom[0xBFF3] = 0xFA
+    assert pulldown_setup._entry(bytes(rom)) == 0xFFF0
