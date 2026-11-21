@@ -2399,7 +2399,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s147r13-64ec7af955949518419730.zip",
   "screens": 9,
-  "text": "86f1d8c3e2ba026a"
+  "text": "1f3b6c34588a70eb"
  },
  "1448d42b550600292fdfa74ff846b499f1e49d690498d46c5f85a918675d3614": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -11869,7 +11869,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "s2dg2-648b341acdbbf399668106.zip",
   "screens": 8,
-  "text": "ff5beac600dd51df"
+  "text": "3b1b428bd0c1146d"
  },
  "636ee172430237e57863b08990a2d68234c82049fa96d2d3c131e0fb41d2fef1": {
   "bios": "Award 4.5x setup code in file",
@@ -17203,7 +17203,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "2gu2241-629cf08fcf5b2379549886.zip",
   "screens": 8,
-  "text": "576fb933bc7ec9f7"
+  "text": "d9745a6bd33567c0"
  },
  "8f85da09abfca77940812677495c2ec41db4c994c3daa82ab15441d0761b45c8": {
   "name": "40509ph-67e9e0509ba35337067374.us",
@@ -19157,7 +19157,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "6585v51-66c62d707eb42410740648.exe.bin",
   "screens": 10,
-  "text": "6fd5c7f3136a8502"
+  "text": "d5b85896862c1027"
  },
  "9e6ac6cd702bef351e1503ebfb5adbbcbdaadaa0c46ef837b0fa404c57e42558": {
   "bios": "PhoenixBIOS 4.0, setup read from the image without running i",
@@ -26463,7 +26463,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "6567v12-5f8ca77a9a6a1872187241.exe.bin",
   "screens": 10,
-  "text": "3fabf2373926cdb6"
+  "text": "df6e5aec7f7e885c"
  },
  "da63d66151836cb8f7e9d81ddcea2bfa2fa133796e006c03636a05a3b8dafd63": {
   "bios": "PhoenixBIOS 4.0, setup read from the image without running i",
@@ -27019,7 +27019,7 @@
   "bios": "AMIBIOS 7 with AMI's new setup utility, captured by running ",
   "name": "7043v100-631b8e454a68a956803142.zip",
   "screens": 10,
-  "text": "d81112db947f19ec"
+  "text": "ff0d8cf8cc9234d7"
  },
  "df29299babbe159962d7f9cca6383951a8b76f559d01cf67a432294acbc732e5": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
