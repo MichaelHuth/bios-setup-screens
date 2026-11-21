@@ -105,6 +105,9 @@ TIMER_SLICE = 500_000  # instructions between two timer interrupts (with timer_i
 # refresh toggles (port 61h bit 4, one per 15 us) in one 55 ms timer tick: a POST counting them
 # between two timer interrupts expects about 1820 cycles (Award 286: "REFRESH TIMING ERROR")
 REFRESH_PER_TICK = 3640
+# ports written only for an I/O delay (no device here): Gigabyte's KT133 boards write E0h 4096
+# times per bit of a GPIO handshake, others EBh/EDh
+DELAY_PORTS = frozenset((0xE0, 0xEB, 0xED))
 CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
 BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
 BEEP_READS = 1000  # port 61h reads (about 15 ms of refresh toggles) a beep lasts at least
@@ -4316,6 +4319,8 @@ class BiosEmulator:
         return patched
 
     def _out(self, uc: Uc, port: int, size: int, value: int, _user: object) -> None:
+        if port in DELAY_PORTS:  # (nothing there: delays, millions in a row)
+            return
         if self.flash_low and port in (0x3F0, 0x3F1):
             self._flash_bank(port, value & 0xFF)
         if (
