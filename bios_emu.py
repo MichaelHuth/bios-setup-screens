@@ -5229,7 +5229,9 @@ class BiosEmulator:
                 # and the next tick is a whole tick later, not at once)
                 self.irq0_pending, self.refresh_toggles = False, 0
             elif vector == 0x0E:
-                self.fdc_pending = False
+                # (its interrupt after a reset: the controller is ready; tvd0509b's AMI looks
+                # at the status once then, and called it a controller failure for ever)
+                self.fdc_pending, self.fdc_waking = False, 0
             else:
                 self.rtc_pending, self.rtc_flags = False, 0xC0  # IRQF + periodic flag
             if not (self.irq0_pending or self.rtc_pending or self.fdc_pending):
