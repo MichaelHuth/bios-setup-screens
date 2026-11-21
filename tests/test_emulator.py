@@ -141,6 +141,19 @@ def test_an_alis_m7101_smbus_host_on_a_board_modelled_otherwise() -> None:
     assert emu._in(emu.uc, 0x5004, 1, None) == 0x20
 
 
+def test_an_smbus_host_set_inside_the_686s_default_pm_window_answers() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VT82C686's ID)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.via_pm_base == 0x5000  # (where the chip leaves its PM I/O)
+    emu.pci_addr = 0x80000000 | 7 << 11 | 3 << 8 | 0x90
+    emu._pci_write(0xCFC, 2, 0x5001)  # the SMBus base, 5000h (s26r26)
+    emu._smbus_write(4, 0x5B)  # a byte-data read of the GL520SM's ID at 2Dh
+    emu._smbus_write(3, 0x00)
+    emu._smbus_write(2, 0x48)
+    assert emu._in(emu.uc, 0x5005, 1, None) == 0x20  # the host's data, not a PM register
+
+
 def test_the_pm_smbus_host_reaches_the_monitor() -> None:
     # the VIA/AMD host at PM I/O +E0h: the GL520SM at 2Dh written (fan divisors 2, 2 in 0Fh),
     # then its fan word at 07h read (+E6h, +E7h): 4528 and 3000 RPM

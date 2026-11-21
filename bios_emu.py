@@ -3521,6 +3521,8 @@ class BiosEmulator:
             base, size = space
             return port - base if base and 0 <= port - base < size else None
         if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
+            if self.smbus_base is not None and 0 <= port - self.smbus_base < 16:
+                return None  # (the SMBus host the BIOS put there: s26r26's at 5000h)
             return port - self.via_pm_base
         return None
 
