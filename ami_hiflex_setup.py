@@ -151,7 +151,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             hits = bios_emu.time_limits_hit.get()
             hits_before = len(hits) if hits is not None else 0
             retry.press_keys(DEL, when_text="DEL")
-            again = retry.run(0xF000, 0xFFF0)
+            again, before = retry.run(0xF000, 0xFFF0), screen.text()
             for _ in range(3):
                 if "SETUP UTIL" in again.text() and award_emu_setup.cursor(again) is not None:
                     break
@@ -159,6 +159,12 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                     break
                 if (left := deadline - time.monotonic()) <= 1:
                     break
+                if retry.stopped_reason == "instruction limit reached" and again.text() == before:
+                    # busy where the POST without the timer was, not waiting for a key: more
+                    # keys only cost minutes (Gigabyte 030808: 300 s, then the start without
+                    # POST anyway)
+                    break
+                before = again.text()
                 retry.max_seconds = int(left)
                 retry.press_keys(F1 if "F1 TO RUN SETUP" in again.text().upper() else DEL)
                 again = retry.resume()
