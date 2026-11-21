@@ -238,6 +238,18 @@ def test_the_tick_count_moves_for_reads_at_its_address_not_through_a_register() 
     assert after_direct > 0 and after_indexed == after_direct  # (a memory test sees no change)
 
 
+def test_an_m6117s_registers_read_back_after_its_unlock() -> None:
+    def reg(index: int, value: int) -> bytes:  # mov al,index ; out 22h,al ; mov al,v ; out 23h,al
+        return b"\xb0" + bytes((index,)) + b"\xe6\x22\xb0" + bytes((value,)) + b"\xe6\x23"
+
+    read_15 = b"\xb0\x15\xe6\x22\xe4\x23"  # mov al,15h ; out 22h,al ; in al,23h
+    code = DS0 + reg(0x15, 0x50) + read_15 + store_al(OUT)  # (locked: nothing reads back)
+    code += reg(0x13, 0xC5) + reg(0x15, 0x50) + read_15 + store_al(OUT + 1)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 2) == b"\xff\x50"
+
+
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
     code = putc(ord("R")) + b"\xba\xf9\x0c\xb0\x06\xee" + b"\xeb\xfe"  # out CF9h,6 ; jmp $
     emu = bios_emu.BiosEmulator(rom(code))

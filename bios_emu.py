@@ -1500,6 +1500,10 @@ class BiosEmulator:
         # ALi M1489 (486, configured through ports 22h/23h, unlocked with C5h in register
         # 03h before each access): found by that unlock, not in the ROM
         self.ali, self.ali_unlocked, self.ali_index = False, False, 0
+        # 13h <- C5h (ALi M6117's unlock): its registers read back as written, nothing else
+        # of the ALi model (a1320v15, w1380 and other M6117 boards: 15h written and read
+        # until its low bits are clear, for ever while locked)
+        self.m6117_unlocked = False
         self.neat = self.not_neat = False  # C&T NEAT shadow RAM on (see _ali_write)
         # UMC UM8498F behind 28h/2Ah, found by its unlock (see _um8498_out): 0 locked, 2 open
         self.um8498_phase, self.um8498_index, self.um8498_regs = 0, 0, bytearray(256)
@@ -2560,8 +2564,11 @@ class BiosEmulator:
         if self.ali_index == 0x10 and value == 0xF8 and self.ali_alias_hook is None:
             self.ali_regs[0x10] = value  # (AMI's sizing probe: see _ali_low_alias)
             self._want_hook("ali_alias_hook")
-        # (the M6117's own unlock, 13h <- C5h, is not modelled: with it, AMI 0626 boards
-        # that work locked (IC08R15) end at the memory chain walk)
+        # (the M6117's own unlock, 13h <- C5h, is not modelled as the ALi model: with it, AMI
+        # 0626 boards that work locked (IC08R15) end at the memory chain walk; only reads
+        # back, m6117_unlocked)
+        if self.ali_index == 0x13:
+            self.m6117_unlocked = value == 0xC5
         if self.ali_index == 0x03:
             self.ali_unlocked = value == 0xC5
             if self.ali_unlocked and not self.ali:
@@ -3985,7 +3992,7 @@ class BiosEmulator:
             if self.ali_index > 0x4F and self.ali_index != 1:
                 return 0xFF
             return self.scat_regs[self.ali_index] & (0x3F if self.ali_index == 0x45 else 0xFF)
-        if port == 0x23 and (self.ali_unlocked or self.sis471):
+        if port == 0x23 and (self.ali_unlocked or self.sis471 or self.m6117_unlocked):
             return self.ali_regs[self.ali_index]  # (SiS 85C471: read back as written)
         if port == 0x24 and self.opti_wrote:
             index = self.ali_index
