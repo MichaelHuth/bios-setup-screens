@@ -3517,13 +3517,19 @@ class BiosEmulator:
         """VT82C686 SMBus host at PM I/O +E0h (as MSI MS-6316's AMI uses it): +E0h status
         (bit 3 busy, bit 4 byte done), +E1h busy (clears once read), +E2h control (a write
         starts), +E4h slave address, +E8h command (the EEPROM offset), +E6h data. Answered from
-        the SPD EEPROMs. value None: a read."""
+        the SPD EEPROMs and the other SMBus devices (the monitors: k7asa's setup writes the
+        GL520SM at 2Dh). value None: a read."""
         if value is not None:
             self.via_smb[off - 0xE0] = value
             if off == 0xE2:
-                eeprom = self.spd.get(self.via_smb[4] >> 1, bytes(256))
-                cmd = self.via_smb[8] or self.via_smb[3]
-                self.via_smb_data = eeprom[cmd] if cmd < len(eeprom) else 0
+                address, cmd = self.via_smb[4] >> 1, self.via_smb[8] or self.via_smb[3]
+                eeprom = self.spd.get(address, self.smbus_devices.get(address, bytes(256)))
+                if not self.via_smb[4] & 1 and address in self.smbus_devices:
+                    self._device_store(address, cmd, self.via_smb[6])  # (a byte written)
+                elif cmd < len(eeprom):  # (a word's second byte at +E7h)
+                    self.via_smb_data, self.via_smb[7] = self._device_word(address, eeprom, cmd)
+                else:
+                    self.via_smb_data = 0
                 self.via_smb_state = 1
             return 0
         if off == 0xE0:
@@ -3536,6 +3542,29 @@ class BiosEmulator:
         if off == 0xE6:
             return self.via_smb_data
         return self.via_smb[off - 0xE0]
+
+    def _device_word(self, address: int, regs: bytes | bytearray, offset: int) -> tuple[int, int]:
+        """What an SMBus device answers at offset and the next: its registers (an SPD EEPROM's
+        bytes), the GL520SM's fan counts in the word at 07h, a Winbond's from 20h on."""
+        if address == GL520_ADDRESS and offset == 0x07:  # the fan counts
+            misc = regs[0x0F]
+            fan1, fan2 = (
+                min(0xFF, round(480_000 / (rpm << (misc >> shift & 3))))
+                for rpm, shift in zip(FAN_RPM, (6, 4))
+            )
+            return fan1, fan2
+        if address in WINBOND_ADDRESSES and offset >= 0x20:  # a Winbond's registers
+            return self._smbus_winbond(offset, regs), self._smbus_winbond(offset + 1 & 0xFF, regs)
+        return regs[offset], regs[(offset + 1) & 0xFF]
+
+    def _device_store(self, address: int, offset: int, value: int) -> None:
+        """A byte written to a (non-SPD) SMBus device's register: kept, but not over the
+        GL520SM's readings; a Winbond's fan divisors as those of the 295h monitor."""
+        regs = self.smbus_devices[address]
+        if address != GL520_ADDRESS or offset not in GL520:  # (readings: the chip's own)
+            regs[offset] = value
+        if address in WINBOND_ADDRESSES and offset >= 0x20 and offset in self.hwmon_divisors:
+            self.hwmon_divisors[offset] = value
 
     def _smbus_write(self, reg: int, value: int) -> None:
         """SMBus host registers: 0 status (written ones clear bits), 2 control (40h starts the
@@ -3623,23 +3652,9 @@ class BiosEmulator:
                 offset = self.smbus_next = getattr(self, "smbus_next", 0)
                 # pylint: disable-next=attribute-defined-outside-init
                 self.smbus_next = (offset + 1) & 0xFF
-            self.smbus[5] = eeprom[offset]
-            self.smbus[6] = eeprom[(offset + 1) & 0xFF]
-            if address == GL520_ADDRESS and offset == 0x07:  # the fan counts
-                misc = eeprom[0x0F]
-                self.smbus[5], self.smbus[6] = (
-                    min(0xFF, round(480_000 / (rpm << (misc >> shift & 3))))
-                    for rpm, shift in zip(FAN_RPM, (6, 4))
-                )
-            elif address in WINBOND_ADDRESSES and offset >= 0x20:  # a Winbond's registers
-                self.smbus[5] = self._smbus_winbond(offset, eeprom)
-                self.smbus[6] = self._smbus_winbond(offset + 1 & 0xFF, eeprom)
+            self.smbus[5], self.smbus[6] = self._device_word(address, eeprom, offset)
         elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
-            assert isinstance(eeprom, bytearray)
-            if address != GL520_ADDRESS or offset not in GL520:  # (readings: the chip's own)
-                eeprom[offset] = self.smbus[5]
-            if address in WINBOND_ADDRESSES and offset >= 0x20 and offset in self.hwmon_divisors:
-                self.hwmon_divisors[offset] = self.smbus[5]
+            self._device_store(address, offset, self.smbus[5])
         if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)
@@ -3916,6 +3931,8 @@ class BiosEmulator:
         if pm is not None:
             if self.via_pm_base and 0xE0 <= pm < 0xF0 and size == 1:
                 return self._via_smbus(pm)
+            if self.via_pm_base and pm == 0xE6 and size == 2:  # a word's data (k7asa's fans)
+                return self._via_smbus(0xE6) | self.via_smb[7] << 8
             if 0x08 <= pm < 0x0C:  # PM timer, 3.58 MHz: time passes as it is read
                 self.pm_timer = (self.pm_timer + 0x40) & 0xFFFFFF
                 return self.pm_timer >> 8 * (pm - 8) & ((1 << 8 * size) - 1)

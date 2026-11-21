@@ -125,6 +125,18 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
 
 
+def test_the_pm_smbus_host_reaches_the_monitor() -> None:
+    # the VIA/AMD host at PM I/O +E0h: the GL520SM at 2Dh written (fan divisors 2, 2 in 0Fh),
+    # then its fan word at 07h read (+E6h, +E7h): 4528 and 3000 RPM
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    for off, value in ((0xE4, 0x5A), (0xE8, 0x0F), (0xE6, 0x50), (0xE2, 0x0A)):
+        emu._via_smbus(off, value)
+    for off, value in ((0xE4, 0x5B), (0xE8, 0x07), (0xE2, 0x0B)):
+        emu._via_smbus(off, value)
+    fan1, fan2 = emu._via_smbus(0xE6), emu._via_smbus(0xE7)
+    assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
+
+
 def test_a_winbond_monitor_on_the_smbus() -> None:
     emu = bios_emu.BiosEmulator(rom(HALT))
 
