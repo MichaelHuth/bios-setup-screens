@@ -1216,6 +1216,9 @@ class BiosEmulator:
         # bit 5 of logical device 7's register F0h and waits until it reads clear.
         self.sio_index, self.sio_regs = {0x2E: 0, 0x4E: 0}, {}
         self.ite_monitor = 0  # an ITE environment controller's base (_ite_monitor_base)
+        # I/O bases taken from configuration registers, looked up on every port access: kept
+        # until a configuration write or the next slice (code here may set registers too)
+        self.io_bases: dict[str, Any] = {}
         self.smbus_block_read = b""  # the bytes of a block read still to come
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
@@ -2208,6 +2211,7 @@ class BiosEmulator:
         return self.pci_devices.get((slot, function))
 
     def _pci_write(self, port: int, size: int, value: int) -> None:
+        self.io_bases.clear()
         reg = (self.pci_addr & 0xFC) + (port - 0xCFC)
         cfg = self._pci_config()
         if cfg is not None:
@@ -3467,28 +3471,34 @@ class BiosEmulator:
     def _pm_offset(self, port: int) -> int | None:
         """Offset of port in the power management I/O space: an ICH's (base at LPC 40h, 128
         ports) or a PIIX4's (base at function 3 40h, 64 ports; e.g. GPI at 30h reads 0)."""
+        if (space := self.io_bases.get("pm")) is None:
+            space = self.io_bases["pm"] = self._pm_space()
+        if space[1]:
+            base, size = space
+            return port - base if base and 0 <= port - base < size else None
+        if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
+            return port - self.via_pm_base
+        return None
+
+    def _pm_space(self) -> tuple[int, int]:
+        """The chipset's power management I/O space for _pm_offset: (base, ports), base 0 when
+        not set; (0, 0) where no such chipset is modelled."""
         lpc = self.pci_devices.get((31, 0))
         if lpc is not None and lpc[0:2] == bytes((0x86, 0x80)):
-            base = int.from_bytes(bytes(lpc[0x40:0x42]), "little") & 0xFF80
-            return port - base if base and 0 <= port - base < 0x80 else None
+            return int.from_bytes(bytes(lpc[0x40:0x42]), "little") & 0xFF80, 0x80
         pm = self.pci_devices.get((7, 3))
         if pm is not None and pm[0:4] == bytes((0x86, 0x80, 0x13, 0x71)):
-            base = int.from_bytes(bytes(pm[0x40:0x42]), "little") & 0xFFC0
-            return port - base if base and 0 <= port - base < 0x40 else None
+            return int.from_bytes(bytes(pm[0x40:0x42]), "little") & 0xFFC0, 0x40
         isa = self.pci_devices.get((1, 0))
         if isa is not None and isa[0:4] == bytes((0x39, 0x10, 0x08, 0x00)):
             # SiS 5597/5598 ISA bridge: ACPI/power management I/O at 90h (64 ports; ASUS SP-AX
             # halts when its status register at +0 reads bit 8 set)
-            base = int.from_bytes(bytes(isa[0x90:0x92]), "little") & 0xFFC0
-            return port - base if base and 0 <= port - base < 0x40 else None
+            return int.from_bytes(bytes(isa[0x90:0x92]), "little") & 0xFFC0, 0x40
         via = self.pci_devices.get((17, 0))
         if via is not None and via[0:2] == b"\x06\x11":
             # VT8233 and later (VT8237, VX855): power management I/O base at 88h, 128 ports
-            base = int.from_bytes(bytes(via[0x88:0x8A]), "little") & 0xFF80
-            return port - base if base and 0 <= port - base < 0x80 else None
-        if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
-            return port - self.via_pm_base
-        return None
+            return int.from_bytes(bytes(via[0x88:0x8A]), "little") & 0xFF80, 0x80
+        return 0, 0
 
     def _via_smbus(self, off: int, value: int | None = None) -> int:
         """VT82C686 SMBus host at PM I/O +E0h (as MSI MS-6316's AMI uses it): +E0h status
@@ -3645,6 +3655,11 @@ class BiosEmulator:
     def _via_smi_port(self) -> int:
         """The VIA software SMI command port (power management I/O base + 2Fh: the VT82C686's
         base at function 4 register 48h, VT8233 and later at 88h of function 0), or -1."""
+        if (port := self.io_bases.get("smi")) is None:
+            port = self.io_bases["smi"] = self._via_smi_lookup()
+        return port
+
+    def _via_smi_lookup(self) -> int:
         pm = self.pci_devices.get((7, 4))
         if pm is not None and pm[2:4] == b"\x57\x30":
             base = int.from_bytes(bytes(pm[0x48:0x4A]), "little") & 0xFF80
@@ -3658,16 +3673,23 @@ class BiosEmulator:
     def _via_hwmon_index(self, port: int) -> int | None:
         """The VT82C686A hardware-monitor register a port is (function 4: base 70h, on with 74h
         bit 0), or None."""
-        cfg = self.pci_devices.get((7, 4))
-        if cfg is None or bytes(cfg[0:4]) != b"\x06\x11\x57\x30" or not cfg[0x74] & 1:
-            return None
-        base = int.from_bytes(bytes(cfg[0x70:0x72]), "little") & 0xFF80
+        if (base := self.io_bases.get("via_hwmon")) is None:
+            cfg = self.pci_devices.get((7, 4))
+            base = 0
+            if cfg is not None and bytes(cfg[0:4]) == b"\x06\x11\x57\x30" and cfg[0x74] & 1:
+                base = int.from_bytes(bytes(cfg[0x70:0x72]), "little") & 0xFF80
+            self.io_bases["via_hwmon"] = base
         return port - base if base and 0 <= port - base < 0x80 else None
 
     def _via_pm_base(self) -> int:
         """The VIA south bridge's power management I/O base: the VT82C686's (function 4,
         register 48h) or the VT82C596's (function 3; AMI's VT693 boot block sets it there
         though the 686 is modelled), or 0."""
+        if (base := self.io_bases.get("via_pm")) is None:
+            base = self.io_bases["via_pm"] = self._via_pm_lookup()
+        return base
+
+    def _via_pm_lookup(self) -> int:
         for function in (4, 3):
             cfg = self.pci_devices.get((7, function))
             if cfg is not None and cfg[0:2] == b"\x06\x11":
@@ -5088,6 +5110,7 @@ class BiosEmulator:
                         _flush_tb(uc)
                 self.in_emulation = True
                 self.refresh_cut = False
+                self.io_bases.clear()
                 try:
                     uc.emu_start(pc, 0xFFFFFFFF, count=count)
                 finally:
