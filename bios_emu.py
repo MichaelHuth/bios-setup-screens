@@ -202,11 +202,14 @@ HWMON_ITE = {0x25: 0x3D, 0x26: 0xEE, 0x27: 0xBA, 0x28: 0xBC, 0x29: 0x26, 0x2A: 0
 # 5Dh, kept with their power-on values); all ones read as stopped fans (0 RPM)
 FAN_RPM = (4500, 3000, 2700)
 # The layout is chosen by the first register the BIOS selects that only one of the two has
-# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later).
-# 40h is the configuration register (start bit) of Winbond's and the LM78's layout, ITE's is
-# 00h (PCChips 598, 2k0308s: 40h = 00h, 01h, then the fan at 29h)
+# (MSI's 952 series initialises both: ITE's fan registers first, Winbond's bank select later),
+# or by a value only Winbond's (and the LM78's) configuration register 40h is given: 00h
+# (stopped) or 80h (initialise; ITE's 40h is a temperature limit). PCChips 598, 2k0308s:
+# 40h = 00h, 01h, then the fan at 29h; 01h alone also comes from ITE boards (PCChips M586LMR)
 HWMON_ITE_ONLY = frozenset((0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x13, 0x14, 0x15, 0x16, 0x17))
-HWMON_WINBOND_ONLY = frozenset((0x40, 0x47, 0x4E, 0x4F))
+HWMON_WINBOND_ONLY = frozenset((0x47, 0x4E, 0x4F))
+HWMON_WINBOND_CONFIG = (0x00, 0x80)
+HWMON_WINBOND = {0x27: 0x26}  # (its temperature at 27h: 38 C)
 HWMON_DIVISORS = {0x0B: 0x09, 0x47: 0x5F, 0x4B: 0x44, 0x5D: 0x00}
 # VT82C686A's own hardware monitor (function 4: I/O base at 70h, decoded with 74h bit 0), in
 # the scales of the Linux via686a driver: temperatures 38, 32 and 45 C at 20h, 21h and 1Fh (the
@@ -3770,7 +3773,8 @@ class BiosEmulator:
             return self.hwmon_index & 0x7F  # busy (bit 7; AMIBIOS 7 waits for it, s85mir3l)
         if port == 0x296 and size == 1:
             index = self.hwmon_index & 0x7F
-            value = HWMON_VOLTAGES.get(index, None if self.hwmon_winbond else HWMON_ITE.get(index))
+            layout = HWMON_WINBOND if self.hwmon_winbond else HWMON_ITE
+            value = HWMON_VOLTAGES.get(index, layout.get(index))
             if value is not None:
                 return value
             if index in self.hwmon_divisors:
@@ -4275,6 +4279,13 @@ class BiosEmulator:
                 self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
         if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
             self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
+        if (
+            port == 0x296
+            and self.hwmon_winbond is None
+            and self.hwmon_index & 0x7F == 0x40
+            and value & 0xFF in HWMON_WINBOND_CONFIG
+        ):
+            self.hwmon_winbond = True
         if size == 1 and (reg := self._via_hwmon_index(port)) is not None:
             if reg not in VIA_HWMON or reg == 0x47:  # (the readings are the chip's own)
                 self.via_hwmon[reg] = value & 0xFF
