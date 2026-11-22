@@ -751,6 +751,13 @@ def _named_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
         0x0482: 0x04A3,
         0x2440: 0x1A30,
     }
+    if not found.keys() & {(31, 0), (7, 0), (2, 0)} and _named(rom, 0x8086, 0x2449):
+        # only the ICH2's LAN function named (Acer's 815 boards address the ICH2 by number;
+        # without it their POST reads FFh as its PM base and resets through CF9h)
+        found[(31, 0)] = (0x2440, 0x060100)
+        if _named(rom, 0x8086, 0x1132):
+            found.setdefault((0, 0), (0x1130, 0x060000))
+            found.setdefault((1, 0), (0x1131, 0x060400))
     if found.get((31, 0), (0,))[0] in (0x2410, 0x2420) and _named(rom, 0x8086, 0x2440):
         # the ICH2 named beside the ICH/ICH0 (generic tables): the ICH2's board, and with the
         # 815's graphics (1132h) named an 815 host (Tiga T-815E)

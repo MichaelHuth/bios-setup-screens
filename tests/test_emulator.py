@@ -125,6 +125,13 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
 
 
+def test_an_ich2_lan_function_named_alone_gives_an_815_board() -> None:
+    hints = struct.pack("<HHHH", 0x8086, 0x2449, 0x8086, 0x1132)  # (Acer's 815 images)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(31, 0)][0:4]) == struct.pack("<HH", 0x8086, 0x2440)
+    assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x8086, 0x1130)
+
+
 def test_an_amd_756_board_gets_the_amd_751_host() -> None:
     # the AMD-756's power management function in a module, an Intel host in a table
     hints = b"AMIBIOSC0627" + struct.pack("<HHHH", 0x1022, 0x740B, 0x8086, 0x122D)
