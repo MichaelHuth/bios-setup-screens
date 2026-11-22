@@ -2041,6 +2041,13 @@ def _unsupported_family(raw: bytes) -> str:
             "at its end), not a mainboard BIOS: it has no setup program of the kind "
             "rebuilt here"
         )
+    if b"Dell System" in raw and len(raw) in (0x70000, 0x1F0000):  # (Dimension 4550,
+        # Precision 350/T5500, OptiPlex 780: DELLXBIOS, PLUS)
+        return (
+            f"a Dell BIOS without its boot block ({len(raw) // 1024} KB, the part its update "
+            "writes: the flash chip's top 64 KB, which starts the machine, stays on the "
+            "board and is not in this file, so the BIOS cannot be run here)"
+        )
     if (  # (PS/2 Model 70 and 55SX: model byte F8h, Micro Channel)
         raw[-16:-15] == b"\xea"
         and raw[-2] == 0xF8
@@ -2563,7 +2570,7 @@ def _pulldown_screens(path: Path, rom: bytes, pages: str | None) -> dict:
     screens = _cached_screens(rom, lambda: _with_post(pulldown_setup.PulldownSetup(rom)))
     result = _mr_screens(path, rom, pages, screens)
     result["bios"] = (
-        "A BIOS with a pull-down menu setup (\"586 System BIOS 1998\": General, Peripherals, "
+        'A BIOS with a pull-down menu setup ("586 System BIOS 1998": General, Peripherals, '
         "PnP/PCI, Hard Disk, Misc., Exit), captured by running the whole ROM in an x86 "
         "emulator (POST stops at the CMOS error and F1 starts the setup; each tab's list "
         "with Enter, the dialog of each entry marked ► with Enter)"

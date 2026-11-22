@@ -535,3 +535,11 @@ def test_a_micro_channel_ps2_bios_is_named_as_one_without_setup() -> None:
     assert "Reference Diskette" in screen_tools._unsupported_family(bytes(raw))
     raw[0x200:0x205] = b"SETUP"  # (a setup in the ROM: not this case)
     assert "Reference Diskette" not in screen_tools._unsupported_family(bytes(raw))
+
+
+def test_a_dell_image_short_of_its_boot_block_is_named_as_one() -> None:
+    raw = bytearray(0x70000)  # 448 KB of a 512 KB chip
+    raw[0x1000:0x100B] = b"Dell System"
+    assert "without its boot block (448 KB" in screen_tools._unsupported_family(bytes(raw))
+    raw += bytes(0x10000)  # (the whole chip: not this case)
+    assert "boot block" not in screen_tools._unsupported_family(bytes(raw))
