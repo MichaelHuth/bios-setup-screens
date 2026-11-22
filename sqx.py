@@ -12,9 +12,11 @@ written anew) and https://justsolve.archiveteam.org/wiki/SQX:
 - methods 0 (stored) and 1-4 (LZH: LZ77 with canonical Huffman trees per block) of both
   revisions, 1.1 (file header +0Bh = 0Bh: 310 literal/length and 56 distance codes) and 2.0
   (14h: 311 and 54, a low-16 distance sub-tree); solid archives share one window across the
-  members. Methods 5-7 (audio, PPMd, range coder) and the delta / IA-32 post-transforms are
-  not decoded: a member after them in a solid archive may come out with wrong bytes (MSI
-  H67H2's image fails its CRC-32 by a few, but its setup reads).
+  members. Methods 5-7 (audio, PPMd, range coder) are not decoded: a member after them in a
+  solid archive may come out with wrong bytes. The delta / IA-32 post-transforms are not
+  applied either; they change only their own member's output, not the shared window.
+- a repeated-distance match with the 14-bit length (code 24) gets no extra length for a far
+  distance (only the coded lengths do: MSI 7366 and 7502 failed their CRC-32 without it).
 """
 
 from __future__ import annotations
@@ -588,6 +590,7 @@ BASE = {
             18,
             18,
             18,
+            18,
         ),
     ),
     8: (
@@ -688,7 +691,6 @@ BASE = {
             17,
             18,
             18,
-            19,
             19,
             19,
             19,
@@ -828,8 +830,11 @@ class _Window:
                 distance = self.previous[(self.turn - (code - 257)) & 3]
                 self.last_distance = self.distance = distance
                 n = self.repeat.decode(bits)
-                length = 257 + bits.get(14) if n == 24 else LEN_BASE[n] + bits.get(LEN_EXTRA[n]) + 2
-                length += distance > 0x7FFF if v20 else (distance > 16383) + (distance > 262143)
+                if n == 24:  # (14 bits: no adjustment by distance)
+                    length = 257 + bits.get(14)
+                else:
+                    length = LEN_BASE[n] + bits.get(LEN_EXTRA[n]) + 2
+                    length += distance > 0x7FFF if v20 else (distance > 16383) + (distance > 262143)
                 self.last_length = length
                 self._copy(out, length, distance)
                 self._remember(distance)
@@ -863,7 +868,8 @@ class _Window:
 def extract(raw: bytes, offset: int, index: int) -> tuple[bytes, bool, bool]:
     """(the bytes of member index, whether they match its CRC-32, whether the window it was
     decoded against is whole). A solid archive is decoded from its first member on; members
-    of methods 5-7 leave a gap in the window, post-transformed ones wrong bytes."""
+    of methods 5-7 leave a gap in the window; post-transformed ones come out untransformed
+    (their CRC fails), but leave the window whole."""
     files = members(raw, offset)
     if sum(m["size"] for m in files[: index + 1]) > MAX_CHAIN:
         raise ValueError("this SQX archive unpacks to too much")
@@ -882,8 +888,9 @@ def extract(raw: bytes, offset: int, index: int) -> tuple[bytes, bool, bool]:
             if window is None or not m["solid"]:
                 window, whole = _Window(m["dic"]), True
             bits = _Bits(packed)
-            if m["compflags"]:  # an extended-compressor header (post-transform: skipped)
-                whole = False
+            # an extended-compressor header: the delta / IA-32 post-transforms, not applied
+            # (they work on the output; the window keeps the bytes before them)
+            if m["compflags"]:
                 if (bits.get(8) | bits.get(8) << 8) & EXT_DELTA:
                     bits.get(48)
             data = window.decode(bits, m["size"], m["ver"] == VER_20)

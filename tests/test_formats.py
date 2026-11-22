@@ -21,6 +21,7 @@ import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
 import pulldown_setup
+import sqx
 import uefi_setup
 from textscreen import Screen
 from builders import (
@@ -516,3 +517,11 @@ def test_acers_setup_utility_menu_and_page_titles() -> None:
     for col, ch in enumerate(b"\xc4" * 28 + b" System Information " + b"\xc4" * 28):
         page.put(col + 1, 1, ch, 0x1F)
     assert acer_setup.utility_title(page) == "System Information"
+
+
+def test_sqx_distance_tables_have_a_bit_count_per_code() -> None:
+    # 48/50/52 codes with a base each and one past the end; the 8 MB table 54 without it
+    for mb, codes in ((1, 48), (2, 50), (4, 52), (8, 54)):
+        bases, extra = sqx.BASE[mb]
+        assert len(extra) == codes
+        assert len(bases) == codes + (mb != 8)
