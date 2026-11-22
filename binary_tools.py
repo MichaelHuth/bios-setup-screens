@@ -67,7 +67,9 @@ TOOLS = [
         "description": "One-call overview of a system BIOS image (start here for BIOS "
         "questions): vendor and version strings, BIOS ID string, date, chipset, Super I/O, CPU "
         "and board-vendor hints, setup page titles, features (ACPI, PnP, USB, hardware monitor, "
-        "...), compressed modules (searched decompressed) and which other tools apply.",
+        "...), compressed modules (searched decompressed), known BIOS bugs found in the code "
+        "(Award INT 13h block-mode bug that turns reads into CompactFlash erases) and which "
+        "other tools apply.",
         "input_schema": {"type": "object", "properties": {"name": NAME}, "required": ["name"]},
     },
     {
