@@ -300,6 +300,9 @@ VIA_SOC_HOSTS = {0x8409: 0x0409, 0x8324: 0x0324}
 K7_SYSCFG = bytes.fromhex("66b9100001c0")
 # AMD Athlon north bridges (host ID -> its AGP bridge's ID) found beside VIA south bridges
 AMD_HOSTS = {0x7006: 0x7007, 0x700E: 0x700F}
+# the AMD-756's ISA, IDE and power management functions: its boards' AMD-751 host is addressed
+# by number (Gigabyte GA-7IXE; the south bridge modelled as a VIA 686, enough for POST)
+AMD756 = (0x7408, 0x7409, 0x740B)
 VIA_HOSTS = (
     0x0691,
     0x0693,
@@ -552,8 +555,9 @@ def _via_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
     )
     agp = (0x1106, 0xB091)
     host_vendor = 0x1106
+    amd756 = any(_named(rom, 0x1022, i) for i in AMD756)
     for amd_host, amd_agp in AMD_HOSTS.items():  # an AMD north bridge beside a VIA south
-        if _named(rom, 0x1022, amd_host):
+        if _named(rom, 0x1022, amd_host) or (amd_host == 0x7006 and amd756):
             host_vendor, host, agp = 0x1022, amd_host, (0x1022, amd_agp)
             break
     dev = VIA_SOUTH[south]
@@ -770,7 +774,9 @@ def _named_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
             found.pop((0, 0), None)
         for key, value in ICH_FUNCTIONS.get(found[(31, 0)][0], {}).items():
             found.setdefault(key, value)
-    via_named = any(_named(rom, 0x1106, i) for i in VIA_SOUTH)
+    via_named = any(_named(rom, 0x1106, i) for i in VIA_SOUTH) or any(
+        _named(rom, 0x1022, i) for i in AMD756
+    )
     if (
         found.get((7, 1), (0,))[0] == 0x7111
         and (7, 0) not in found
