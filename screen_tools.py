@@ -1641,9 +1641,11 @@ def _paired_halves(raw: bytes) -> bytes:
     blank blocks (DP511A: 128 KB of 256 KB, a mark left in the third block)."""
     if len(raw) >= 0x20000 and not len(raw) % 0x10000 and raw[-16] != 0xEA:
         for block in range(len(raw) // 0x10000 - 1, 0, -1):
+            if raw[block * 0x10000 - 16] != 0xEA:  # (before counting: 32 MB UEFI images)
+                continue
             tail = raw[block * 0x10000 :]
             common = collections.Counter(tail).most_common(1)[0][1]
-            if raw[block * 0x10000 - 16] == 0xEA and common >= 0.99 * len(tail):
+            if common >= 0.99 * len(tail):
                 raw = raw[: block * 0x10000]
                 break
     while (
