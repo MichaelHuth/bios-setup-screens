@@ -303,6 +303,8 @@ AMD_HOSTS = {0x7006: 0x7007, 0x700E: 0x700F}
 # the AMD-756's ISA, IDE and power management functions: its boards' AMD-751 host is addressed
 # by number (Gigabyte GA-7IXE; the south bridge modelled as a VIA 686, enough for POST)
 AMD756 = (0x7408, 0x7409, 0x740B)
+# ICH to ICH5 LPC bridges, whose GPIO block is at the base in 58h (_ich_gpio_base)
+ICH_GPIO_LPC = (0x2410, 0x2420, 0x2440, 0x244C, 0x2480, 0x248C, 0x24C0, 0x24CC, 0x24D0, 0x24DC)
 VIA_HOSTS = (
     0x0691,
     0x0693,
@@ -1249,6 +1251,10 @@ class BiosEmulator:
         # place in it: read from the block data register, the pointer reset by reading control
         self.smbus_buffer, self.smbus_buffer_at = b"", 0
         self.delay_loops: dict[bytes, bool] = {}  # delay port writes' code: in a bare loop?
+        self.ich_gpio = bytearray(b"\xff" * 0x40)  # the ICH GPIO registers (_ich_gpio_byte)
+        # the levels of its input pins, or None: the block not modelled (MSI's 815 boards tell
+        # their variants by the pins they drive themselves; the Acer route sets it)
+        self.ich_gpio_inputs: int | None = None
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
         self.pm_regs, self.pm_timer = bytearray(256), 0
@@ -3799,6 +3805,32 @@ class BiosEmulator:
             self.io_bases["via_hwmon"] = base
         return port - base if base and 0 <= port - base < 0x80 else None
 
+    def _ich_gpio_base(self) -> int:
+        """The ICH-ICH5 GPIO I/O base (LPC bridge 58h, on with 5Ch bit 4), or 0 (also when
+        ich_gpio_inputs is None)."""
+        if self.ich_gpio_inputs is None:
+            return 0
+        if (base := self.io_bases.get("ich_gpio")) is None:
+            cfg, base = self.pci_devices.get((31, 0)), 0
+            if (
+                cfg is not None
+                and cfg[0:2] == b"\x86\x80"
+                and int.from_bytes(bytes(cfg[2:4]), "little") in ICH_GPIO_LPC
+                and cfg[0x5C] & 0x10
+            ):
+                base = int.from_bytes(bytes(cfg[0x58:0x5A]), "little") & 0xFFC0
+            self.io_bases["ich_gpio"] = base
+        return base
+
+    def _ich_gpio_byte(self, off: int) -> int:
+        """A GPIO register byte: as written (FFh before), but the level registers (0Ch-0Fh,
+        GP_LVL) give ich_gpio_inputs for the pins GP_IO_SEL (04h-07h) makes inputs."""
+        if 0x0C <= off < 0x10:
+            inputs = self.ich_gpio[off - 8]
+            level = (self.ich_gpio_inputs or 0) >> (8 * (off - 0x0C)) & 0xFF
+            return (self.ich_gpio[off] & ~inputs | level & inputs) & 0xFF
+        return self.ich_gpio[off]
+
     def _via_pm_base(self) -> int:
         """The VIA south bridge's power management I/O base: the VT82C686's (function 4,
         register 48h) or the VT82C596's (function 3; AMI's VT693 boot block sets it there
@@ -4213,6 +4245,10 @@ class BiosEmulator:
             return regs[index & 0x1F]
         if port in (0x3B4, 0x3D4):
             return self.crtc[port][0]
+        if (base := self._ich_gpio_base()) and 0 <= (off := port - base) < 0x40:
+            n = min(size, 0x40 - off)
+            data = bytes(self._ich_gpio_byte(off + i) for i in range(n)) + b"\xff" * (size - n)
+            return int.from_bytes(data, "little")
         if (base := self._via_pm_base()) and 0x48 <= port - base < 0x4C:
             # VIA general purpose inputs (PM I/O 48h-4Bh) low: AMI on the VT693 board
             # CBVC105E reads 4Ah bit 5 high as "set the clock generator", does so, resets
@@ -4873,6 +4909,9 @@ class BiosEmulator:
             else:
                 self.pit_reload = value & 0xFF
             self.pit_write_high = not self.pit_write_high
+        elif (base := self._ich_gpio_base()) and 0 <= (off := port - base) < 0x40:
+            for i in range(min(size, 0x40 - off)):
+                self.ich_gpio[off + i] = value >> 8 * i & 0xFF
 
     def _kbc_command(self, cmd: int) -> None:
         """8042 keyboard controller commands (port 64h) as POST uses them."""

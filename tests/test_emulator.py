@@ -132,6 +132,26 @@ def test_an_ich2_lan_function_named_alone_gives_an_815_board() -> None:
     assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x8086, 0x1130)
 
 
+def test_the_ich_gpio_block_reads_back_and_its_inputs_read_as_set() -> None:
+    hints = struct.pack("<HHHH", 0x8086, 0x2449, 0x8086, 0x1132)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    emu.ich_gpio_inputs = 0
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0xFF  # (no GPIO base yet: nothing there)
+    emu.pci_addr = 0x8000F858  # GPIOBASE FC00h, on with GPIO_CNTL bit 4
+    emu._pci_write(0xCFD, 1, 0xFC)
+    emu.pci_addr = 0x8000F85C
+    emu._pci_write(0xCFC, 1, 0x10)
+    emu._out(emu.uc, 0xFC03, 1, 0x08, None)  # GPIO 27: a GPIO ...
+    emu._out(emu.uc, 0xFC07, 1, 0x08, None)  # ... and an input
+    emu._out(emu.uc, 0xFC0F, 1, 0x0C, None)  # (bit 2 an output, set)
+    assert emu._in(emu.uc, 0xFC03, 1, None) == 0x08
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0x04  # GPIO 27 low (Acer's route)
+    emu.ich_gpio_inputs = 0x08000000
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0x0C  # (or high)
+    emu.ich_gpio_inputs = None
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0xFF  # (not modelled: other boards)
+
+
 def test_an_amd_756_board_gets_the_amd_751_host() -> None:
     # the AMD-756's power management function in a module, an Intel host in a table
     hints = b"AMIBIOSC0627" + struct.pack("<HHHH", 0x1022, 0x740B, 0x8086, 0x122D)

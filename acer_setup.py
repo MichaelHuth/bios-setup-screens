@@ -115,6 +115,7 @@ class AcerSetup:
         emu.keep_rom = True  # (the ROM stays ROM when the bot gives up on its PAM)
         emu.flash_low = flash_low
         emu.kbc_input_port = 0xBB  # the password jumper open
+        emu.ich_gpio_inputs = 0  # (the 815 boards halt at POST code F2h with GPIO 27 high)
         emu.cf9_resets_in_place = 4  # (the first boot sets CMOS 8Fh and resets)
         # ALi M1541 PM2C/GCKCTL at their reset value 00h: POST reads bit 1 of EBh into the
         # flag that lets the setup module start (V35ND1S1)
