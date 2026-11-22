@@ -13844,8 +13844,10 @@
   "text": "6e2f10e470d87e11"
  },
  "73c402683a5a1f32a7885c1d005bfde9bc16489734d478e56e2123aae4a557f4": {
+  "bios": "Acer BIOS with its BIOS Utility, captured by running the who",
   "name": "s58mf2s1-6104174fda52d779988812.zip",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "2cb13a3ed59a8ed5"
  },
  "73c51f2a1406e39436c4273a71d56f671afdaf11872be0b64db58ddb59cb8909": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
