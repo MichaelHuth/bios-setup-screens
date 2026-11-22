@@ -12,8 +12,10 @@ import pytest
 
 import ami
 import award6_setup
+import award_cf_bug
 import award_emu_setup
 import award_setup
+import bios_summary
 import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
@@ -413,3 +415,39 @@ def test_hiflex_direct_start_takes_posts_monitor_setup() -> None:
     assert hfjump_setup.monitor_writes(bytes(via), 0) == []  # (not the 295h routine)
     writes = hfjump_setup.monitor_writes(bytes(via), 0, hfjump_setup.VIA_MONITOR_WRITE)
     assert writes == [(0x2B, 0xFF), (0x2C, 0x00), (0x47, 0xF0)]
+
+
+# --- Award INT 13h block-mode bug (0040:0076, C4h -> C0h) ------------------------------------
+
+# the reported 4.50G entry: the control byte ORed into 0040:0076 before the drive count check
+CF_ENTRY = bytes.fromhex(
+    "0ae47506c646ff00eb0f80fc08742580fc15742080fc01741b8a56ffb008e84e08baf603ee"
+    "24c026080676008a46ff3a46fe7312"
+)
+CF_MASK = bytes.fromhex("368a740980fe91743826f6067600c0741380e6f080fe40770b")
+# later images: C4h, C5h and C6h jump past the mask
+CF_GUARDED = bytes.fromhex(
+    "368a740980fe91744780fec4742480fec5741f80fec6741a26f6067600c0741280e6f080fe40770a"
+)
+
+
+def test_the_award_cf_bug_is_found_where_both_pieces_are_there() -> None:
+    found = award_cf_bug.check([("image", b"\x90" * 64 + CF_ENTRY + b"\x90" * 64 + CF_MASK)])
+    assert found is not None and found["verdict"].startswith("affected (both bugs, as in")
+    assert "AH=41h" in found["trigger"] and "workaround" in found
+
+
+def test_award_images_whose_block_commands_skip_the_mask_are_not_affected() -> None:
+    found = award_cf_bug.check([("image", CF_ENTRY + b"\x90" * 64 + CF_GUARDED)])
+    assert found is not None and found["verdict"].startswith("not affected")
+    assert "workaround" not in found
+    assert award_cf_bug.check([("image", b"\x90" * 256)]) is None
+
+
+def test_the_bios_summary_reports_the_award_cf_bug() -> None:
+    image = bytearray(b"\xff" * 0x10000)
+    image[0x100 : 0x100 + 24] = b"Award Modular BIOS v4.50G"[:24]
+    image[0x1000 : 0x1000 + len(CF_ENTRY)] = CF_ENTRY
+    image[0x2000 : 0x2000 + len(CF_MASK)] = CF_MASK
+    bugs = bios_summary.summarize(bytes(image))["known_bugs"]
+    assert bugs[0]["verdict"].startswith("affected")

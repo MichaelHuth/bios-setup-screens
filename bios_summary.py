@@ -10,6 +10,7 @@ import re
 from typing import Any, Dict
 
 import ami
+import award_cf_bug
 import award_setup
 import ami_setup
 import lzh
@@ -144,6 +145,9 @@ def summarize(data: bytes) -> Dict[str, Any]:
     result["features"] = [
         name for name, needles in FEATURES.items() if any(n in everything for n in needles)
     ]
+    cf_bug = award_cf_bug.check(blobs)
+    if cf_bug:
+        result["known_bugs"] = [cf_bug]
 
     tools = ["rom_info (layout, signatures, reset vector)", "strings/search_bytes (batched)"]
     if notes:
