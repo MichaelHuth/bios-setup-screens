@@ -194,6 +194,20 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
+def test_an_smbus_block_read_into_the_32_byte_buffer_ends_with_intr() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    emu.smbus_base = 0x400
+    emu.smbus_devices[0x69] = bytearray([3, 0x11, 0x22, 0x33]) + bytearray(252)
+    emu._smbus_write(0x0D, 0x02)  # E32B
+    emu._smbus_write(4, 0xD3)  # a block read of the clock generator at 69h
+    emu._smbus_write(2, 0x54)
+    emu.smbus_busy = 0
+    assert emu._in(emu.uc, 0x400, 1, None) & 0x82 == 0x02  # INTR, no BYTE_DONE
+    assert emu._in(emu.uc, 0x405, 1, None) == 3
+    emu._in(emu.uc, 0x402, 1, None)  # (resets the buffer pointer)
+    assert [emu._in(emu.uc, 0x407, 1, None) for _ in range(3)] == [0x11, 0x22, 0x33]
+
+
 @pytest.mark.parametrize("reads, stops", [(1000, True), (50, False)])
 def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
     # mov al,3 ; out 61h,al (speaker on) ; mov cx,reads ; in al,61h ; loop (the in) ;

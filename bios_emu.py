@@ -1232,6 +1232,9 @@ class BiosEmulator:
         # until a configuration write or the next slice (code here may set registers too)
         self.io_bases: dict[str, Any] = {}
         self.smbus_block_read = b""  # the bytes of a block read still to come
+        # the 32-byte block buffer (AUX_CTL, register 0Dh, bit 1: E32B) and the next byte's
+        # place in it: read from the block data register, the pointer reset by reading control
+        self.smbus_buffer, self.smbus_buffer_at = b"", 0
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
         self.pm_regs, self.pm_timer = bytearray(256), 0
@@ -3685,6 +3688,14 @@ class BiosEmulator:
             # register with BYTE_DONE, INTR after the last one is taken
             count = eeprom[0] if 0 < eeprom[0] <= 32 else 8
             self.smbus[5], data = count, bytes(eeprom[1 : count + 1])
+            if self.smbus[0x0D] & 0x02:
+                # E32B: the whole block in the buffer at once, INTR (031008s's AMI reads
+                # its clock generator so and waits for INTR or an error)
+                self.smbus_buffer, self.smbus_buffer_at = data, 0
+                self.smbus_block_read, self.smbus_block_left = b"", -1
+                self.smbus[0] |= 0x02
+                self.smbus_result, self.smbus_idle = 0x02, 0
+                return
             self.smbus[7], self.smbus_block_read = data[0], data[1:]
             self.smbus_block_left = 0
             self.smbus[0] |= 0x80
@@ -3701,15 +3712,21 @@ class BiosEmulator:
             self.smbus[5], self.smbus[6] = self._device_word(address, eeprom, offset)
         elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
             self._device_store(address, offset, self.smbus[5])
-        if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
+        if (
+            value >> 2 & 7 == 5
+            and not self.smbus[4] & 1
+            and self.smbus[5] > 1
+            and not self.smbus[0x0D] & 0x02  # (E32B: sent from the buffer at once, INTR)
+        ):
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)
             self.smbus[0] |= 0x80
             self.smbus_result, self.smbus_idle = 0, 0
             return
         self.smbus_block_left = -1
+        block_written = value >> 2 & 7 == 5 and not self.smbus[4] & 1
         self.smbus[0] |= (
-            0x82 if value >> 2 & 7 == 5 and not self.smbus[4] & 1 else 0x02  # done (block
+            0x82 if block_written and not self.smbus[0x0D] & 0x02 else 0x02  # done (block
         )  # written: a byte too)
         self.smbus_result, self.smbus_idle = 0x02, 0
 
@@ -4139,7 +4156,12 @@ class BiosEmulator:
                     self.smbus[0] |= self.smbus_result
                     self.smbus_result = 0
             if port - self.smbus_base == 2:  # control: START (bit 6) is write-only, reads 0
-                return self.smbus[2] & ~0x40  # (w1641v11's AMI waits for it to clear)
+                self.smbus_buffer_at = 0  # (w1641v11's AMI waits for it to clear)
+                return self.smbus[2] & ~0x40
+            if port - self.smbus_base == 7 and self.smbus[0x0D] & 0x02 and self.smbus_buffer:
+                at = self.smbus_buffer_at
+                self.smbus_buffer_at = (at + 1) % 32
+                return self.smbus_buffer[at] if at < len(self.smbus_buffer) else 0
             return self.smbus[port - self.smbus_base]
         if 0x481 <= port <= 0x48F or (
             self.dma_pages_ext and (0x401 <= port <= 0x40F or 0x4C1 <= port <= 0x4CF)
