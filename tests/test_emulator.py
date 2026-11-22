@@ -567,6 +567,19 @@ def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
     assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
 
 
+def test_amis_p4_ratio_check_takes_the_ratio_for_fixed() -> None:
+    # "test eax,100000h / jne": taken (the ratio fixed), so the store after it is skipped
+    store = b"\xc6\x06" + struct.pack("<H", OUT) + b"\x01"  # mov byte [OUT],1
+    before = b"\xc6\x06" + struct.pack("<H", OUT) + b"\x02"  # mov byte [OUT],2
+    code = DS0 + before + bios_emu.P4_RATIO_FIXED + bytes([len(store)]) + store + HALT
+    emu = bios_emu.BiosEmulator(rom(code), host_id=0x1A30)
+    emu.msr_patch_end = 0x100000
+    emu.post_codes_seen.update(range(3))
+    assert emu._patch_msr_reads()
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) == b"\x02"
+
+
 @pytest.mark.parametrize("host_id, signature", [(0, 0x0435), (0x1A30, 0xF27)])
 def test_edx_holds_the_cpus_signature_after_a_reset(host_id: int, signature: int) -> None:
     # at power-on: mov [OUT],edx ; the 8042's reset (out 64h,FEh), then mov [OUT+4],edx

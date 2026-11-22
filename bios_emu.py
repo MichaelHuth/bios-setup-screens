@@ -965,6 +965,10 @@ RDMSR_RATIO_PATCH = bytes.fromhex("66B8") + (15 << 22).to_bytes(4, "little") + b
 # wanted, else written to MSR 2Dh and the board reset (Intel D845WR's POST; the emulated CPU
 # never reports the new ratio): the compare becomes "cmp al,al"
 P4_RATIO_CMP = bytes.fromhex("66B92C0000000F3266C1E81838D874")
+# "xor ecx,ecx / mov cl,2Ch / rdmsr / test eax,100000h / jne": AMI's variant, which takes bit 20
+# for a ratio it may not change (sp30221 resets until the ratio is the one its jumpers give):
+# the jne becomes a jmp
+P4_RATIO_FIXED = bytes.fromhex("6633C9B12C0F3266A90000100075")
 # "mov ecx,2Ch / rdmsr" (EBC_FREQUENCY_ID) where the emulator plays a Northwood
 # (cpu_p4_signature): "mov eax,10000000h / cdq", ratio 16 at a 100 MHz bus (code 0), a
 # 1.6 GHz Pentium 4 (Dell's PLUS 1.10 multiplies the two for its clock line: 0 MHz)
@@ -1229,6 +1233,7 @@ class BiosEmulator:
         self.msr_patches = (
             (hints + rom).count(RDMSR_RATIO) > 0
             or P4_RATIO_CMP in hints + rom
+            or P4_RATIO_FIXED in hints + rom
             or SMI_FLAG_WAIT in hints + rom
         )
         self.post_codes_seen = set()  # memory is searched once per POST code, not per write
@@ -4515,6 +4520,7 @@ class BiosEmulator:
                 at = memory.find(RDMSR_P4, at + 1)
         for pattern, offset, replacement in (
             (P4_RATIO_CMP, 12, b"\x38\xc0"),
+            (P4_RATIO_FIXED, 13, b"\xeb"),
             (SMI_FLAG_WAIT, 6, b"\x90\x90"),
         ):
             at = memory.find(pattern)
