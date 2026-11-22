@@ -132,6 +132,20 @@ def test_an_amd_756_board_gets_the_amd_751_host() -> None:
     assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x1022, 0x7006)
 
 
+def test_a_sis_730_resets_and_ends_its_acpi_command() -> None:
+    hints = b"AMIBIOSC0627" + struct.pack("<HH", 0x1039, 0x0730)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(0, 0)][2:4]) == b"\x30\x07"
+    emu.pci_addr = 0x80000800 | 0x74  # device 1: ACPI base 5000h
+    emu._pci_write(0xCFC, 2, 0x5000)
+    assert emu._in(emu.uc, 0x5060, 2, None) == 0  # (a command from 62h bit 0 ended)
+    emu.pci_addr = 0x80000800 | 0x44
+    emu._pci_write(0xCFE, 1, 0x31)
+    with pytest.raises(bios_emu.Stop):
+        emu._pci_write(0xCFE, 1, 0xF1)  # bits 6-7: the reset
+    assert emu.stopped_reason == "reset"
+
+
 def test_an_alis_m7101_smbus_host_on_a_board_modelled_otherwise() -> None:
     image = bytearray(rom(HALT))
     image[0x8000:0x8008] = struct.pack("<HHHH", 0x10B9, 0x7101, 0x10B9, 0x1533)  # (its table)

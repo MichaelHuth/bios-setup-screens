@@ -2274,7 +2274,7 @@ class BiosEmulator:
         if cfg is not None:
             device = int.from_bytes(bytes(cfg[2:4]), "little")
             straps, clearing = STRAPS.get(device, {}), SELF_CLEARING.get(device, {})
-            was47 = cfg[0x47]
+            was46, was47 = cfg[0x46], cfg[0x47]
             for i in range(size):  # IDs, class and header type are read-only
                 if reg + i < 0x100 and not (reg + i < 4 or 8 <= reg + i < 12 or reg + i == 0x0E):
                     byte = value >> (8 * i) & 0xFF
@@ -2326,6 +2326,19 @@ class BiosEmulator:
                 # waits in a loop). Not the 686: its boards set the
                 # bit on every start (PCChips M754, M92)
                 cfg[0x47] &= 0xFE
+                self.stopped_reason = "reset"
+                raise Stop()
+            if (
+                key == (1, 0)
+                and self.pci_devices[(0, 0)][2:4] == b"\x30\x07"
+                and reg <= 0x46 < reg + size
+                and cfg[0x46] & 0xC0 == 0xC0
+                and was46 & 0xC0 != 0xC0
+            ):
+                # SiS 730: device 1 (the LPC bridge on the board) register 46h, bits 6-7 set
+                # reset the machine (810-bios's AMI clears CMOS 0Eh, writes 31h there, then
+                # sets them again and again, waiting for the reset)
+                cfg[0x46] &= 0x3F
                 self.stopped_reason = "reset"
                 raise Stop()
             chip_bar = CHIP_SMBUS_BAR.get(key) if self.chip_smbus else None
@@ -4205,6 +4218,13 @@ class BiosEmulator:
         if port == 0x860:  # SiS 961/962 ACPI (base 800h) + 60h: AMI Hi-Flex on SiS K7 boards
             return 0  # sets bit 0 at 862h and waits for this to read 0 (PCChips M841, Matsonic
             # MS8318E, run as the VIA model since a VIA ID is in their ROMs)
+        if (
+            port & 0x7F == 0x60
+            and (lpc := self.pci_devices.get((1, 0))) is not None
+            and self.pci_devices[(0, 0)][2:4] == b"\x30\x07"
+            and port - 0x60 == int.from_bytes(bytes(lpc[0x74:0x76]), "little") & ~0x7F
+        ):
+            return 0  # the same on the SiS 730, its ACPI base in device 1's 74h (810-bios)
         # display enable / vertical retrace toggle as the screen is drawn (3BAh in monochrome
         # modes: pci450-a's video BIOS waits for it there)
         if port in (0x3DA, 0x3BA):
