@@ -4488,13 +4488,14 @@ class BiosEmulator:
         GA-6VXD7's AMI waits 4096 of them, again and again) ends after this pass: CX = 1."""
         if uc.reg_read(UC_X86_REG_CR0) & 1:
             return
-        code = bytes(uc.mem_read(self._code_address(), 10))
+        code = bytes(uc.mem_read(self._code_address(), 12))
         loop = self.delay_loops.get(code)
         if loop is None:
             at = 2 if code[0] == 0xE6 else 1  # (out imm8, al or out dx, al)
             while code[at : at + 2] == b"\xeb\x00" and at < 8:
                 at += 2
             loop = code[at] == 0xE2 and at + 2 + struct.unpack("b", code[at + 1 : at + 2])[0] <= 0
+            # (at most 9 + 2 bytes: four jmp $+2 after out dx, al, then the loop)
             self.delay_loops[code] = loop
         if loop and uc.reg_read(UC_X86_REG_CX) > 1:
             uc.reg_write(UC_X86_REG_CX, 1)

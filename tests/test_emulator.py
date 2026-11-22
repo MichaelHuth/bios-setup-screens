@@ -215,11 +215,18 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
-@pytest.mark.parametrize("body, writes", [(b"\xeb\x00", 1), (b"\x90\x90", 0x1000)])
+@pytest.mark.parametrize(
+    "out, body, writes",
+    [
+        (b"\xe6\xe0", b"\xeb\x00", 1),
+        (b"\xe6\xe0", b"\x90\x90", 0x1000),
+        (b"\xba\xe0\x00\xee", b"\xeb\x00" * 4, 1),  # (mov dx,0E0h ; out dx,al: 11 bytes)
+    ],
+)
 def test_a_bare_delay_port_loop_ends_after_one_pass(
-    monkeypatch: pytest.MonkeyPatch, body: bytes, writes: int
+    monkeypatch: pytest.MonkeyPatch, out: bytes, body: bytes, writes: int
 ) -> None:
-    # mov cx,1000h ; out E0h,al ; jmp $+2 (or two nops: not a bare delay) ; loop ; hlt
+    # mov cx,1000h ; out E0h,al ; jmp $+2s (or two nops: not a bare delay) ; loop ; hlt
     seen = []
     original = bios_emu.BiosEmulator._end_delay_loop
 
@@ -228,7 +235,9 @@ def test_a_bare_delay_port_loop_ends_after_one_pass(
         original(self, uc)  # type: ignore[arg-type]
 
     monkeypatch.setattr(bios_emu.BiosEmulator, "_end_delay_loop", counted)
-    emu = bios_emu.BiosEmulator(rom(b"\xb9\x00\x10\xe6\xe0" + body + b"\xe2\xfa" + HALT))
+    back = -(len(out) - (3 if len(out) > 2 else 0) + len(body) + 2)  # (to the out)
+    code = b"\xb9\x00\x10" + out + body + b"\xe2" + struct.pack("b", back) + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
     emu.run(0xF000, 0xFFF0)
     assert len(seen) == writes
 
