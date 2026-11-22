@@ -76,6 +76,10 @@ def test_a_recalibrate_after_one_reset_sense_reports_its_seek() -> None:
     fdc(0x07, 0x00)  # recalibrate drive 0
     fdc(0x08)
     assert results() == [0x20, 0]  # seek end, track 0 (not drive 1's reset result)
+    emu.fdc_no_drive = True  # (no drive on the cable: not ready)
+    fdc(0x07, 0x00)
+    fdc(0x08)
+    assert results() == [0x48, 0]
 
 
 def test_the_timer_counts_down() -> None:

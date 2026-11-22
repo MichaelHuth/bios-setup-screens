@@ -1359,6 +1359,10 @@ class BiosEmulator:
         # cylinders, IRQ 6 after reset, recalibrate and seek (POST tests the controller)
         self.fdc_cmd, self.fdc_results, self.fdc_pcn = [], [], [0, 0, 0, 0]
         self.fdc_pending, self.fdc_dor, self.fdc_reset_sense, self.fdc_st0 = False, 0, 0, None
+        # no drive on the cable: recalibrate and seek end "not ready", the drive status shows
+        # neither ready nor track 0 (Novell's ATterminal offers its setup only at an error:
+        # "601-Diskette error")
+        self.fdc_no_drive = False
         self.fdc_waking = 0  # status reads after the reset that still find it not ready
         # a restart through the keyboard controller resets only the CPU (MR BIOS restarts POST
         # that way); otherwise it stops the run as "reset", for a new POST
@@ -2515,10 +2519,16 @@ class BiosEmulator:
         cmd, self.fdc_cmd = self.fdc_cmd, []
         drive = cmd[1] & 3 if len(cmd) > 1 else 0
         if code == 0x04:  # sense drive status: ready, two sides, track 0
-            self.fdc_results = [0x28 | (0x10 if not self.fdc_pcn[drive] else 0) | drive]
+            self.fdc_results = [
+                (
+                    drive
+                    if self.fdc_no_drive
+                    else 0x28 | (0x10 if not self.fdc_pcn[drive] else 0) | drive
+                )
+            ]
         elif code in (0x07, 0x0F):  # recalibrate / seek: done, IRQ 6
             self.fdc_pcn[drive] = cmd[2] if code == 0x0F else 0
-            self.fdc_st0 = 0x20 | drive
+            self.fdc_st0 = (0x48 if self.fdc_no_drive else 0x20) | drive
             # (the reset's "ready changed" results not yet sensed are gone: AMI's 1994 POST
             # senses one after the reset, then reads C1h for its recalibrate and beeps)
             self.fdc_reset_sense = 0

@@ -43,6 +43,7 @@ class NovellSetup:
             ram_mb=4,
         )
         emu.kbc_reset_in_place = True
+        emu.fdc_no_drive = True  # (POST offers F2 only at an error: its diskette's, 601)
         emu.max_seconds = 240  # (its memory test: 50 s on an idle PC)
         screen = emu.run(0xF000, 0xFFF0)
         if emu.stopped_reason not in WAITING or PROMPT not in screen.text():
