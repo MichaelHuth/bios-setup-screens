@@ -5666,10 +5666,10 @@
   "text": "d255b05051037996"
  },
  "2fcd6813d5986e74dbf6703fd11755030acb6bdd49b3bf8f712586619ec2531a": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "403185dlx107e-621644c759d67748747495.exe.bin",
   "screens": 8,
-  "text": "da38bbaa117b30e9"
+  "text": "3c89ff48bee04e05"
  },
  "2fe72369596d7034eeee3d43e78af623e3ee78bc863136d6fc8fbe388b3f7a61": {
   "name": "55ls-84f6896-84f6897-66aa9b478fb49738399593.zip",
@@ -13498,8 +13498,10 @@
   "text": "29fb3d50be8101ac"
  },
  "70ed554a7db20e6b6f58ea4f0749b9a802a68dea0c9f89597522f40d52e13524": {
+  "bios": "AMIBIOS with the Easy Setup (text mode, menu bar), captured ",
   "name": "626cc15-60afecc541171223871928.zip",
-  "result": "unsupported"
+  "screens": 9,
+  "text": "f916406eff506156"
  },
  "70f40f1a51be26d59510935c7658b4fdf02603bffd2f6dbc6ba065883a64d825": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -23590,10 +23592,10 @@
   "text": "d235fe2ab58fef67"
  },
  "c20ee5a903620cc509b435f072c322feefa721de9c52cfd2facf22c325233680": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "990402s-6547c333103f8001338356.zip",
-  "screens": 8,
-  "text": "9eebf730ddc104db"
+  "screens": 9,
+  "text": "b562c48ff58910b5"
  },
  "c214c1c291d812e8d77b219a97c234b373b87c9077285fb41bf905ff8a79f186": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
