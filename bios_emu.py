@@ -1235,6 +1235,7 @@ class BiosEmulator:
         # the 32-byte block buffer (AUX_CTL, register 0Dh, bit 1: E32B) and the next byte's
         # place in it: read from the block data register, the pointer reset by reading control
         self.smbus_buffer, self.smbus_buffer_at = b"", 0
+        self.delay_loops: dict[bytes, bool] = {}  # delay port writes' code: in a bare loop?
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
         self.pm_regs, self.pm_timer = bytearray(256), 0
@@ -4456,6 +4457,22 @@ class BiosEmulator:
             _flush_tb(self.uc)
         return patched
 
+    def _end_delay_loop(self, uc: Uc) -> None:
+        """A loop of nothing but a delay port write (out to it, jmp $+2s, loop back: Gigabyte
+        GA-6VXD7's AMI waits 4096 of them, again and again) ends after this pass: CX = 1."""
+        if uc.reg_read(UC_X86_REG_CR0) & 1:
+            return
+        code = bytes(uc.mem_read(self._code_address(), 10))
+        loop = self.delay_loops.get(code)
+        if loop is None:
+            at = 2 if code[0] == 0xE6 else 1  # (out imm8, al or out dx, al)
+            while code[at : at + 2] == b"\xeb\x00" and at < 8:
+                at += 2
+            loop = code[at] == 0xE2 and at + 2 + struct.unpack("b", code[at + 1 : at + 2])[0] <= 0
+            self.delay_loops[code] = loop
+        if loop and uc.reg_read(UC_X86_REG_CX) > 1:
+            uc.reg_write(UC_X86_REG_CX, 1)
+
     def _out(self, uc: Uc, port: int, size: int, value: int, _user: object) -> None:
         if port == 0xEC and size == 1:
             self.ec_index = value & 0xFF
@@ -4465,6 +4482,7 @@ class BiosEmulator:
             self._e000_rom(value & 0xFF)
             return
         if port in DELAY_PORTS:  # (nothing there: delays, millions in a row)
+            self._end_delay_loop(uc)
             return
         if self.flash_low and port in (0x3F0, 0x3F1):
             self._flash_bank(port, value & 0xFF)
