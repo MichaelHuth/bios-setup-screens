@@ -21,6 +21,7 @@ import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
 import pulldown_setup
+import screen_tools
 import sqx
 import uefi_setup
 from textscreen import Screen
@@ -525,3 +526,12 @@ def test_sqx_distance_tables_have_a_bit_count_per_code() -> None:
         bases, extra = sqx.BASE[mb]
         assert len(extra) == codes
         assert len(bases) == codes + (mb != 8)
+
+
+def test_a_micro_channel_ps2_bios_is_named_as_one_without_setup() -> None:
+    raw = bytearray(b"\xff" * 0x20000)
+    raw[0x100:0x110] = b"IBM 1981, 1987 "
+    raw[-16:] = bytes.fromhex("ea5be000f030342f31312f383800f834")  # model byte F8h
+    assert "Reference Diskette" in screen_tools._unsupported_family(bytes(raw))
+    raw[0x200:0x205] = b"SETUP"  # (a setup in the ROM: not this case)
+    assert "Reference Diskette" not in screen_tools._unsupported_family(bytes(raw))

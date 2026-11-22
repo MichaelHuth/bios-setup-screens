@@ -2041,6 +2041,16 @@ def _unsupported_family(raw: bytes) -> str:
             "at its end), not a mainboard BIOS: it has no setup program of the kind "
             "rebuilt here"
         )
+    if (  # (PS/2 Model 70 and 55SX: model byte F8h, Micro Channel)
+        raw[-16:-15] == b"\xea"
+        and raw[-2] == 0xF8
+        and b"IBM" in raw
+        and not re.search(rb"(?i)setup", raw)
+    ):
+        return (
+            "an IBM PS/2 BIOS (Micro Channel: its model byte is F8h), which has no setup "
+            "program in the ROM: those machines are configured with the Reference Diskette"
+        )
     if (  # (IBM 5160, Sanyo SPC-400D, Ericsson Portable, Corona PPC-400, Amstrad PC1640)
         len(raw) <= 0x10000
         and raw[-16:-15] == b"\xea"
