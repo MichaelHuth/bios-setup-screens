@@ -10,6 +10,7 @@ import struct
 
 import pytest
 
+import acer_setup
 import ami
 import award6_setup
 import award_cf_bug
@@ -490,3 +491,28 @@ def test_pulldown_setup_reads_its_bar_and_list_and_where_post_starts() -> None:
     assert pulldown_setup._entry(bytes(rom)) == 0xE05B
     rom[0xBFF3] = 0xFA
     assert pulldown_setup._entry(bytes(rom)) == 0xFFF0
+
+
+def test_acers_setup_utility_menu_and_page_titles() -> None:
+    menu = Screen()
+    rows = {
+        0: "Setup Utility",
+        8: "    \x07 System Information     \xe2",
+        9: "    \x07 Disk Drives            \xe2",
+        16: "      Load Default Settings  \xe2",
+        17: "      Abort Settings Change  \xe2",
+        24: "     <ALT+H>  Key Help",
+    }
+    for row, text in rows.items():
+        for col, ch in enumerate(text.encode("latin-1")):
+            menu.put(col + 20, row, ch, 0x1F)
+    assert acer_setup.utility_entries(menu) == [
+        "System Information",
+        "Disk Drives",
+        "Load Default Settings",
+        "Abort Settings Change",
+    ]
+    page = Screen()
+    for col, ch in enumerate(b"\xc4" * 28 + b" System Information " + b"\xc4" * 28):
+        page.put(col + 1, 1, ch, 0x1F)
+    assert acer_setup.utility_title(page) == "System Information"
