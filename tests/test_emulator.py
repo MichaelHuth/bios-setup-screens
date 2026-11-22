@@ -65,6 +65,19 @@ def test_cmos_read_and_write() -> None:
     assert memory(emu, OUT, 2) == b"\x42\x99"
 
 
+def test_a_recalibrate_after_one_reset_sense_reports_its_seek() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    fdc = lambda *values: [emu._out(emu.uc, 0x3F5, 1, v, None) for v in values]  # noqa: E731
+    results = lambda: [emu._in(emu.uc, 0x3F5, 1, None) for _ in range(2)]  # noqa: E731
+    emu._out(emu.uc, 0x3F2, 1, 0x08, None)  # the controller held in reset ...
+    emu._out(emu.uc, 0x3F2, 1, 0x0C, None)  # ... and out of it: "ready changed" per drive
+    fdc(0x08)
+    assert results() == [0xC0, 0]  # (drive 0's; POST senses no more)
+    fdc(0x07, 0x00)  # recalibrate drive 0
+    fdc(0x08)
+    assert results() == [0x20, 0]  # seek end, track 0 (not drive 1's reset result)
+
+
 def test_the_timer_counts_down() -> None:
     latch = b"\xb0\x00\xe6\x43"  # mov al,0 ; out 43h,al (latch channel 0)
     code = DS0 + b"\xb0\x34\xe6\x43\xb0\xff\xe6\x40\xe6\x40"  # channel 0, mode 2, count FFFFh

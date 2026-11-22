@@ -2519,6 +2519,9 @@ class BiosEmulator:
         elif code in (0x07, 0x0F):  # recalibrate / seek: done, IRQ 6
             self.fdc_pcn[drive] = cmd[2] if code == 0x0F else 0
             self.fdc_st0 = 0x20 | drive
+            # (the reset's "ready changed" results not yet sensed are gone: AMI's 1994 POST
+            # senses one after the reset, then reads C1h for its recalibrate and beeps)
+            self.fdc_reset_sense = 0
             self._fdc_irq()
         elif code == 0x08:  # sense interrupt status
             if self.fdc_reset_sense:  # after a reset: one per drive, "ready changed"
