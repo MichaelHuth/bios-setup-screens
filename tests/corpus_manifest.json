@@ -4662,8 +4662,10 @@
   "text": "cf9676b06dd9458e"
  },
  "273e6b5344258fc4542855b4a309f3db1c5a00cec6f4ed823949bbba4642d6c8": {
+  "bios": "Award 6.00PG: frames and help texts from the awardext module",
   "name": "bios7502-62ffb38899a65484520232.exe.bin",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "98f73521b18be7d2"
  },
  "2741412c2cdfb74ddd00d8449a7e90d76ccbb232ca7f6dc56501a92e0edb7bbc": {
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
@@ -15442,8 +15444,10 @@
   "text": "6bee0464721021f7"
  },
  "8098d111a33d9cd3d978496db50834bf7a147ada2b4d17f99dcb725c72270309": {
+  "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
   "name": "bio7366v2x-64832bb54b461816980140.exe.bin",
-  "result": "unsupported"
+  "screens": 9,
+  "text": "712aa4da12698407"
  },
  "80afa39ead9753024e828013fef5b7da6d8a77fb4d043fcd231bdb47b0122672": {
   "bios": "UEFI firmware (AMI Aptio and others), setup pages read from ",
