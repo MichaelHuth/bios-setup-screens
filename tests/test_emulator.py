@@ -194,6 +194,24 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
+@pytest.mark.parametrize("body, writes", [(b"\xeb\x00", 1), (b"\x90\x90", 0x1000)])
+def test_a_bare_delay_port_loop_ends_after_one_pass(
+    monkeypatch: pytest.MonkeyPatch, body: bytes, writes: int
+) -> None:
+    # mov cx,1000h ; out E0h,al ; jmp $+2 (or two nops: not a bare delay) ; loop ; hlt
+    seen = []
+    original = bios_emu.BiosEmulator._end_delay_loop
+
+    def counted(self: bios_emu.BiosEmulator, uc: object) -> None:
+        seen.append(1)
+        original(self, uc)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(bios_emu.BiosEmulator, "_end_delay_loop", counted)
+    emu = bios_emu.BiosEmulator(rom(b"\xb9\x00\x10\xe6\xe0" + body + b"\xe2\xfa" + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert len(seen) == writes
+
+
 def test_an_smbus_block_read_into_the_32_byte_buffer_ends_with_intr() -> None:
     emu = bios_emu.BiosEmulator(rom(HALT))
     emu.smbus_base = 0x400
