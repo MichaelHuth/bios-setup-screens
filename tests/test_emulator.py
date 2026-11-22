@@ -125,6 +125,13 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
 
 
+def test_an_amd_756_board_gets_the_amd_751_host() -> None:
+    # the AMD-756's power management function in a module, an Intel host in a table
+    hints = b"AMIBIOSC0627" + struct.pack("<HHHH", 0x1022, 0x740B, 0x8086, 0x122D)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x1022, 0x7006)
+
+
 def test_an_alis_m7101_smbus_host_on_a_board_modelled_otherwise() -> None:
     image = bytearray(rom(HALT))
     image[0x8000:0x8008] = struct.pack("<HHHH", 0x10B9, 0x7101, 0x10B9, 0x1533)  # (its table)
