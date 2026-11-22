@@ -110,6 +110,20 @@ def test_tiano_damaged(packed: bytes) -> None:
     only_value_error(tiano.decompress, packed)
 
 
+def test_tiano_damaged_block_size_zero_ends_soon() -> None:
+    # 48 MB asked for from 60 bytes: a block size read as 0 never ended, one literal with a
+    # 0-bit code repeated for 8 s (Hypothesis' example)
+    packed = (
+        b"<\x00\x00\x00\x01\x00\x00\x03\x00\x01`\x03\x00\x02p\x1f"
+        + b"\xff" * 31
+        + b"\xe0"
+        + bytes(16)
+        + b"\x06 \x00`\x00"
+    )
+    with pytest.raises(ValueError):
+        tiano.decompress(packed)
+
+
 @SETTINGS
 @given(hs.binary(max_size=3000))
 def test_lzss_random(data: bytes) -> None:
