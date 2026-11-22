@@ -117,6 +117,18 @@ def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine(
     assert 1400 < struct.unpack("<H", memory(emu, OUT, 2))[0] < 2250
 
 
+def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
+    # only the VT82C686 named: the host (691) inferred; writes to F0000 before the BIOS sets
+    # 61h-63h do not change what reads there (626cc15's boot block checksums it)
+    code = DS0 + b"\x66\xb8\x00\x00\x00\x80\xba\xf8\x0c\x66\xef\xb2\xfc\x66\xed"  # (PCI used)
+    code += b"\xb8\x00\xf0\x8e\xd8" + b"\xc6\x06\x00\x00\x5e"  # mov byte [F000:0],5Eh
+    code += b"\xa0\x00\x00" + b"\x31\xdb\x8e\xdb" + store_al(OUT) + HALT  # read it back
+    emu = bios_emu.BiosEmulator(rom(code), hints=struct.pack("<HH", 0x1106, 0x0686))
+    assert emu.via_shadow and emu.pam_valid
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) != b"\x5e"
+
+
 def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     image = bytearray(rom(HALT))
     image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VIA south bridge's ID)

@@ -1581,11 +1581,18 @@ class BiosEmulator:
         # VIA: a host bridge the ROM names has shadow RAM through 61h-63h (Intel's PAM
         # registers 59h-5Fh are DRAM settings there); beside an AMD host, and for AMI BIOSes
         # that name no chipset (which may be SiS boards, whose 61h-63h are DRAM settings),
-        # plain RAM. The SMBus where boot blocks expect it before they set it
+        # plain RAM. A VIA host inferred beside a VIA south bridge the ROM names has them too
+        # (626cc15, VT82C691 + 686: its DRAM sizing writes at F0000 went into the plain RAM,
+        # the boot block's ROM checksum failed and it beeped in its recovery). The SMBus
+        # where boot blocks expect it before they set it
         via_host = self.pci_devices.get((0, 0), b"")
-        self.via_shadow = via_host[0:2] == b"\x06\x11" and _named(
-            rom + hints, 0x1106, int.from_bytes(bytes(via_host[2:4]), "little")
+        host_named = _named(rom + hints, 0x1106, int.from_bytes(bytes(via_host[2:4]), "little"))
+        self.via_shadow_reset = (
+            via_host[0:2] == b"\x06\x11"
+            and not host_named
+            and any(_named(rom + hints, 0x1106, i) for i in VIA_SOUTH)
         )
+        self.via_shadow = via_host[0:2] == b"\x06\x11" and host_named or self.via_shadow_reset
         # VT82C686: its PM I/O where the chip leaves it (5000h) for BIOSes that never set it
         # (MSI MS-6316 reads 50CAh, wants 2020h clear, and its SMBus at +E0h)
         south = self.pci_devices.get((7, 0), b"")
@@ -1629,7 +1636,10 @@ class BiosEmulator:
             self.pam_valid = False  # (no Intel PAM: C0000-FFFFF plain RAM)
         if any(c[0:2] == b"\x06\x11" for c in self.pci_devices.values()):
             self.smbus_base = 0x400
-            self.pam_valid = False  # plain RAM; with a VIA host until the BIOS sets 61h-63h
+            # plain RAM; with a VIA host until the BIOS sets 61h-63h, but for the one inferred
+            # beside a VIA south bridge (via_shadow_reset) the ROM from the reset on: writes
+            # before then go nowhere (626cc15's DRAM sizing writes at F0000)
+            self.pam_valid = self.via_shadow_reset
             # (AMD Athlon boards shadow through the CPU's fixed-range MTRRs instead, GA-7ZXE)
         if self.via_shadow:
             self.pam_base = 0x100
