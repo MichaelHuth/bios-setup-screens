@@ -24,6 +24,7 @@ import pulldown_setup
 import screen_tools
 import sqx
 import uefi_setup
+import winbios_setup
 from textscreen import Screen
 from builders import (
     AmiModule,
@@ -543,3 +544,30 @@ def test_a_dell_image_short_of_its_boot_block_is_named_as_one() -> None:
     assert "without its boot block (448 KB" in screen_tools._unsupported_family(bytes(raw))
     raw += bytes(0x10000)  # (the whole chip: not this case)
     assert "boot block" not in screen_tools._unsupported_family(bytes(raw))
+
+
+def test_winbios_entry_is_the_longest_run_of_calls_before_the_setup_loader() -> None:
+    runtime = bytearray(0x10000)
+    sig, loader = 0xC016, 0xBFE4
+    runtime[sig : sig + 8] = b"AMIBIOSS"
+    runtime[loader : loader + 6] = b"\xb8\x02\x00\xbf" + struct.pack("<H", sig)  # mov ax,2
+
+    def call(at: int, to: int) -> bytes:
+        return b"\xe8" + struct.pack("<H", (to - at - 3) & 0xFFFF)
+
+    runtime[0xA6C1:0xA6C5] = b"\x90\x90\x1f\x07"  # POST: one call, then the loader
+    runtime[0xA6C5:0xA6C8] = call(0xA6C5, 0xC084)
+    runtime[0xA6C8:0xA6CB] = call(0xA6C8, loader)
+    setup = bytearray(b"\xe9\x00\x00")  # (a jmp before the run)
+    for code in (
+        call(0xBF58, 0xA62B),
+        b"\x9c",  # pushf
+        call(0xBF5C, 0xC08A),
+        b"\xb8\x00\x10",  # mov ax,1000h
+        call(0xBF62, 0xC093),
+        call(0xBF65, 0xC084),
+        call(0xBF68, loader),
+    ):
+        setup += code
+    runtime[0xBF55 : 0xBF55 + len(setup)] = setup
+    assert winbios_setup.find_entry(bytes(runtime)) == 0xBF58

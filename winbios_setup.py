@@ -70,21 +70,36 @@ def is_winbios(rom: bytes) -> bool:
 
 
 def find_entry(runtime: bytes) -> int:
-    """Offset in the F000 runtime where setup is entered."""
+    """Offset in the F000 runtime where setup is entered: of the calls to the setup module's
+    loader, the one after the longest run of calls. (The 12/15/93 core, s706bios: the loader
+    takes mov ax,<n>, and pushf and mov ax,1000h, the segment of the runtime's copy, come
+    between the calls; its POST calls the loader once more, after a single call.)"""
     sigs = [m.start() for m in re.finditer(b"AMIBIOSS", runtime)]
     if not sigs:
         raise ValueError("no setup module loader (AMIBIOSS) in the runtime BIOS")
+    best: tuple[int, int] | None = None
     for sig in sigs:
-        for m in re.finditer(rb"\xb0.\xbf" + re.escape(struct.pack("<H", sig)), runtime, re.S):
+        loaders = rb"(?:\xb0.|\xb8..)\xbf" + re.escape(struct.pack("<H", sig))
+        for m in re.finditer(loaders, runtime, re.S):
             loader = m.start()
             for c in re.finditer(rb"(?=\xe8(..))", runtime, re.S):
                 if (c.start() + 3 + struct.unpack("<h", c.group(1))[0]) & 0xFFFF != loader:
                     continue
-                start = c.start()
-                while start >= 3 and runtime[start - 3] == 0xE8:  # the calls before it
-                    start -= 3
-                return start
-    raise ValueError("setup entry not found in the runtime BIOS")
+                start, calls = c.start(), 0
+                while True:  # the calls before it
+                    if start >= 3 and runtime[start - 3] == 0xE8:
+                        start, calls = start - 3, calls + 1
+                    elif start >= 6 and runtime[start - 3] == 0xB8 and runtime[start - 6] == 0xE8:
+                        start -= 3  # mov ax,imm
+                    elif start >= 4 and runtime[start - 1] == 0x9C and runtime[start - 4] == 0xE8:
+                        start -= 1  # pushf
+                    else:
+                        break
+                if best is None or calls > best[0]:
+                    best = (calls, start)
+    if best is None:
+        raise ValueError("setup entry not found in the runtime BIOS")
+    return best[1]
 
 
 def _pixels(glyph: bytes) -> set:
@@ -218,6 +233,12 @@ class WinBios:
             if b"AMIBIOSS" not in runtime and not emu.stopped_reason.startswith("booting"):
                 # (a loop, not the end of POST: the setup module is unpacked only at its end)
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
+            if b"AMIBIOSS" not in runtime:
+                # (s706bios: POST boots with its boot half at F000; the half with the module
+                # table holds the runtime and its setup loader, and runs at F000 itself)
+                halves = [rom[h : h + 0x10000] for h in range(0, len(rom), 0x10000)]
+                runtime = next((h for h in halves if b"AMIBIOSS" in h), runtime)
+                emu.uc.mem_write(0xF0000, runtime)
             self.entry = find_entry(runtime)
             # the setup module loader looks for the copies of the ROM the boot block made
             # (memory tests have overwritten them since): at 2000:0 the half with the module
