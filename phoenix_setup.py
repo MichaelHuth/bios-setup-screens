@@ -421,6 +421,7 @@ class PhoenixTextSetup(PhoenixSetup):
                 # (ALR 9200: no chipset modelled, POST used E0000-EFFFF as RAM, and its
                 # setup then looked there for a module of the ROM and ran into text): POST
                 # again with that half of the ROM kept as ROM
+                # pylint: disable-next=non-parent-init-called
                 self.__init__(rom, protect_e000=True)  # type: ignore[misc]
                 return
             hint = (
