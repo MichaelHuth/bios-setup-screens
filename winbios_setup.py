@@ -306,7 +306,7 @@ class WinBios:
     def screens(self, defaults: str = "setup", color: int = 0) -> list[tuple[str, Screen, str]]:
         """[(title, screen, stop reason)]: main screen, Standard Setup and the list pages
         (with their PgDn continuations), Color Set ('94)."""
-        main, _ = self.capture([])
+        main, reason = self.capture([])
         self.has_failsafe = "Fail-safe" in plain_text(main)
         prefix, focus = [], 0
         if defaults == "setup" or (defaults == "bios" and self.has_failsafe):
@@ -322,6 +322,8 @@ class WinBios:
         lines = plain_text(main).splitlines()
         if not lines:  # (Biostar MB-1433UIV: the setup screen stayed empty)
             raise ValueError("the WinBIOS setup screen is empty")
+        if not _in_setup(main):  # (hippo-dca2: a POST that ran off left an "8")
+            raise ValueError(f"the WinBIOS setup did not start (stopped: {reason})")
         help_line = lines[-1]  # "Set Date, Time, ..." on Standard
         for n in range(4):  # the Tab order differs between versions: find the Setup window
             screen, _ = self.capture(prefix + ["tab"] * n)
