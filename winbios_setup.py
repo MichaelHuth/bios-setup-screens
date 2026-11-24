@@ -213,15 +213,34 @@ class WinBios:
         self.in_post = False  # setup started by POST itself (not entered from outside)
         if self.kind == "94":
             screen = emu.run(0xF000, 0xFFF0)
+            pause = None  # an error pause with the runtime and its setup loader in place
             for _ in range(3):  # an error pause ("CMOS checksum failure ... RUN SETUP
                 # UTILITY, Press F1 to RESUME", Shuttle HOT-433 07/25/94): F1 starts setup
                 if emu.stopped_reason not in ("waiting for a key", "polling the keyboard") or (
                     "F1" not in screen.text()
                 ):
                     break
+                if b"AMIBIOSS" in emu.uc.mem_read(0xF0000, 0x10000):
+                    pause = emu.snapshot()
                 emu.keys = [0x3B00]  # F1
                 screen = emu.resume()
             self.in_post = "Alt+H" in plain_text(screen)
+            if (
+                not self.in_post
+                and pause is not None
+                and not emu.stopped_reason.startswith(
+                    ("booting", "instruction limit", "time limit")
+                )
+            ):
+                # (POST fails after the pause, mpe-401's EISA POST: setup from the pause; the
+                # loader switches the shadow RAM off to read the ROM's modules at F000, which
+                # a board with no chipset modelled does not do: the ROM's half put there)
+                emu.restore(pause)
+                emu.stopped_reason = "booting (setup entered at the error pause)"
+                halves = [rom[h : h + 0x10000] for h in range(0, len(rom), 0x10000)]
+                table = next((h for h in halves if h.startswith(b"AMIBIOSC")), None)
+                if table is not None and not emu.pci_devices:
+                    emu.uc.mem_write(0xF0000, table)
         if self.in_post:
             pass
         elif self.kind == "94":
