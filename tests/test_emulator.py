@@ -129,6 +129,19 @@ def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
     assert memory(emu, OUT, 1) != b"\x5e"
 
 
+def test_protect_e000_keeps_the_lower_half_of_a_128_kb_rom_from_writes() -> None:
+    # mov ax,E000h / mov ds,ax / mov byte [0],5Eh / read it back to 0:OUT (no chipset: plain RAM)
+    code = b"\xb8\x00\xe0\x8e\xd8\xc6\x06\x00\x00\x5e\x8a\x1e\x00\x00"  # (mov bl,[0])
+    code += DS0 + b"\x88\xd8" + store_al(OUT) + HALT  # mov al,bl
+    image = rom(HALT) + rom(code)
+    for protect, want in ((False, b"\x5e"), (True, b"\xff")):
+        emu = bios_emu.BiosEmulator(image)
+        emu.protect_e000 = protect
+        emu._protect()
+        emu.run(0xF000, 0xFFF0)
+        assert memory(emu, OUT, 1) == want
+
+
 def test_phoenix_cpu_table_search_takes_the_first_entry_when_none_matches() -> None:
     # mov si,6070h / cmp si,6103h / jae +11 / cmp cs:[si+2],al / je +10 / add si,7 / jmp -17 /
     # mov ax,45h / jmp -25 (881032j's runtime, unpacked in memory)

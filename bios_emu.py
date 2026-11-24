@@ -1574,6 +1574,7 @@ class BiosEmulator:
         self.fill_solid_font = False  # see screen() (set by winbios_setup)
         self.mylex_counter = False  # port 800h counts bytes (set by mylex_setup)
         self.protect_socket = False  # see _protect (set by mr_setup)
+        self.protect_e000 = False  # see _protect (set by phoenix_setup)
         self.sis471 = False  # SiS 85C471 shadow RAM in register 52h (see _ali_write)
         self.below50 = False  # a register under 50h written behind 22h/23h (not a SiS 85C471)
         self.msr_patch_end = 0xFE000  # where _patch_msr_reads stops patching
@@ -2255,9 +2256,10 @@ class BiosEmulator:
             fallback = not self.pci_used and not (self.pam_gone and not self.shadow_used[b])
             # (F0000-FFFFF is the BIOS socket, not general shadow RAM: POST's memory test
             # must not overwrite the ROM on a chipset not modelled, MR BIOS m351, m356)
-            writable = (fallback and (b < 12 or not self.protect_socket)) or (
-                self._pam_bits(b) & 3 == 3
-            )
+            # (E0000-EFFFF likewise with protect_e000: ALR 9200's setup looks for its module
+            # in the ROM there after POST used that space as RAM, see phoenix_setup)
+            socket = self.protect_socket if b >= 12 else self.protect_e000 and b >= 8
+            writable = (fallback and not socket) or (self._pam_bits(b) & 3 == 3)
             if self.protected[b] == (not writable):
                 continue
             self.uc.mem_protect(
