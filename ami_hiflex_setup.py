@@ -51,6 +51,17 @@ def _modules(rom: bytes) -> list[dict]:
         return []
 
 
+def _spinning(emu: bios_emu.BiosEmulator) -> bool:
+    """POST stopped at its instruction or time limit in a tight loop: as many instructions again
+    end within the same 64 bytes (a slow POST, 7ZXH's long wait at F000:04FEh, gets out and
+    goes on as it is)."""
+    if not emu.stopped_reason.endswith("limit reached"):
+        return False
+    at = emu._code_address()
+    emu.resume()
+    return emu.stopped_reason.endswith("limit reached") and abs(emu._code_address() - at) < 64
+
+
 def is_hiflex(rom: bytes) -> bool:
     texts = rom + b"".join(m.get("data") or b"" for m in _modules(rom))
     return any(t in texts.upper() for t in TITLES)
@@ -84,7 +95,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             # CPU ratio in the CMOS): POST again with the CMOS they left. One that boots
             # without an error pause: again, with DEL tapped once POST offers it
             emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=100_000_000, hints=hints)
-            emu.reset_edx = signature
+            emu.use_processor(signature)
             if not emu.pci_devices:
                 raise ValueError(
                     f"this board's chipset is not emulated ({bios_emu.EMULATED}), "
@@ -96,7 +107,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             if cmos_hi is not None:
                 emu.cmos_hi[:] = cmos_hi
             screen = emu.run(0xF000, 0xFFF0)
-            if emu.stopped_reason.endswith("limit reached") and signature is not None:
+            if signature is not None and _spinning(emu):
                 # POST lost in the processor's own set-up (dkf2111: its MTRR sizing loops on
                 # a memory size still 0): again as an unknown processor
                 signature = None
@@ -153,7 +164,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                 timer_irq=True,
             )
             retry.max_seconds = 400
-            retry.reset_edx = signature
+            retry.use_processor(signature)
             # (400 s for all rounds: each one after an instruction limit would run another
             # 600 M instructions, and a board the retry does not help took 1270 s, s08-11)
             deadline = time.monotonic() + retry.max_seconds

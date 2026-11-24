@@ -85,21 +85,24 @@ def test_ami_cim_x_modules_are_stored_whatever_their_flag() -> None:
 
 
 def test_ami_cpu_signature_is_one_the_post_modules_table_lists() -> None:
-    def post(entries: list[tuple[int, int]]) -> dict:
-        data = bytearray(0x80)
-        search = b"\x24\xf0\x0a\xc9\x74\x02\x0c\x0f\xbb" + struct.pack("<H", 0x40) + b"\xe8\0\0"
-        data[0x10 : 0x10 + len(search)] = search
-        table = b"".join(struct.pack("<HHH", s, f, 0) for s, f in entries + [(0xFFFF, 0x121)])
-        data[0x40:0x44] = struct.pack("<HH", 0x44 + len(table) - 6, 0x0A00)
-        data[0x44 : 0x44 + len(table)] = table
+    def post(*tables: list[tuple[int, int]]) -> dict:
+        data = bytearray(0x100)
+        for k, entries in enumerate(tables):
+            at = 0x80 + 0x40 * k
+            search = b"\x24\xf0\x0a\xc9\x74\x02\x0c\x0f\xbb" + struct.pack("<H", at) + b"\xe8\0\0"
+            data[0x10 + 0x10 * k : 0x10 + 0x10 * k + len(search)] = search
+            table = b"".join(struct.pack("<HHH", s, f, 0) for s, f in entries + [(0xFFFF, 0x121)])
+            data[at : at + 4] = struct.pack("<HH", at + 4 + len(table) - 6, 0x0A00)
+            data[at + 4 : at + 4 + len(table)] = table
         return {"id": 0, "data": bytes(data)}
 
-    # the first entry that allows write-back as well as write-through, an OverDrive (1xxxh)
-    # last; any stepping (Fh)
-    table = [(0x051F, 0x15C2), (0x153F, 0x15D3), (0x054F, 0x15D3)]
-    assert ami.cpu_signature([post(table)]) == 0x0541
-    assert ami.cpu_signature([post([(0x0430, 0x0329)])]) == 0x0430  # (else the first)
-    assert ami.cpu_signature([post([])]) is None  # (an AMD board: Intel's table empty)
+    # the newest ordinary processor (an OverDrive, 1xxxh, not); any stepping (Fh)
+    table = [(0x051F, 0x15C2), (0x153F, 0x15D3), (0x054F, 0x15D3), (0x053F, 0x15D3)]
+    assert ami.cpu_signature([post(table)]) == (0x0541, False)
+    assert ami.cpu_signature([post([(0x0430, 0x0329)])]) == (0x0430, False)
+    assert ami.cpu_signature([post([])]) is None  # (the unknown CPU only)
+    # Intel's table empty, AMD's lists Athlons
+    assert ami.cpu_signature([post([], [(0x060F, 0x15D2), (0x064F, 0x15D2)])]) == (0x0641, True)
     assert ami.cpu_signature([{"id": 1, "data": post([(0x051F, 0x15CB)])["data"]}]) is None
 
 

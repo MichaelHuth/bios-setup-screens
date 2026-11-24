@@ -192,7 +192,7 @@ class WinBios:
                 rom, cmos=cmos, max_instructions=300_000_000, hints=hints, host_id=host_id
             )
             emu.max_seconds = 240  # (the instructions decide, not how busy the machine is: a778)
-            emu.reset_edx = signature  # (Internal Cache "Reserved" for an unknown CPU)
+            emu.use_processor(signature)  # (Internal Cache "Reserved" for an unknown CPU)
             if self.kind == "94":
                 emu.fill_solid_font = True
                 # (5280-v101's boot block sets CMOS 78h bit 7 and resets through CF9h once)

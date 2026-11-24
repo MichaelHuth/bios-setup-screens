@@ -4520,11 +4520,15 @@ class BiosEmulator:
         as on the board's own CPUs, and the signature (CPUID 1) a driver chose (reset_edx); the
         emulated CPU answers everything else."""
         leaf = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
-        if leaf == 1 and self.reset_edx is not None and not self.cpu_amd:
+        if leaf == 1 and self.reset_edx is not None:
             family = self.reset_edx >> 8 & 0x0F
             # (features of that time: FPU ... CMOV and MMX from the Pentium II on, the
-            # Pentium's base set, a 486's FPU)
-            features = 0x0080FBFF if family >= 6 else 0x000001BF if family == 5 else 0x00000001
+            # Pentium's base set, a 486's FPU; an Athlon's)
+            features = (
+                0x0183F9FF
+                if self.cpu_amd
+                else 0x0080FBFF if family >= 6 else 0x000001BF if family == 5 else 0x00000001
+            )
             for reg, value in zip(
                 (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
                 (self.reset_edx, 0, 0, features),
@@ -5151,8 +5155,19 @@ class BiosEmulator:
 
     # --- run --------------------------------------------------------------------------------
 
+    def use_processor(self, chosen: tuple[int, bool] | None) -> None:
+        """The processor a driver chose from the BIOS's own table (ami.cpu_signature): its
+        signature in EDX at reset and in CPUID 1; an AMD one where the BIOS lists no Intel
+        processor (an Athlon then, as for a BIOS without Intel's vendor string)."""
+        if chosen is None:
+            self.reset_edx = None
+            return
+        self.reset_edx, amd = chosen
+        if amd and not self.cpu_amd:
+            self.cpu_amd, self.cpu_brand = True, "AMD Athlon(tm) Processor"
+
     def _reset_signature(self) -> int:
-        if self.reset_edx is not None and not self.cpu_amd:
+        if self.reset_edx is not None:
             return self.reset_edx
         return P4_SIGNATURE if self.cpu_p4_signature and not self.cpu_amd else 0x0435
 
@@ -5163,7 +5178,7 @@ class BiosEmulator:
         self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
         if self.from_reset and self.cpu_p4_signature and not self.cpu_amd:
             uc.reg_write(UC_X86_REG_EDX, P4_SIGNATURE)  # (as after power-on)
-        if self.from_reset and self.reset_edx is not None and not self.cpu_amd:
+        if self.from_reset and self.reset_edx is not None:
             uc.reg_write(UC_X86_REG_EDX, self.reset_edx)
         if self.from_reset:
             if self.cr0_at_reset:

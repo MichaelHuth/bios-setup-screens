@@ -186,7 +186,7 @@ class AmiBios7(phoenix_setup.PhoenixSetup):
                 ram_mb=64,
                 timer_irq=serverworks,
             )
-            emu.reset_edx = getattr(self, "signature", None)
+            emu.use_processor(getattr(self, "signature", None))
             if serverworks:
                 emu.serverworks, emu.smbus_base = True, 0x580
                 # (POST tests text memory if INT 10h stays in F000, with a count the APIC
