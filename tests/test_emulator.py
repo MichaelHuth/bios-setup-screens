@@ -320,6 +320,23 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
+def test_a_word_written_to_the_clock_generator_reads_back() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+
+    def transfer(address: int, data: tuple[int, int] = (0, 0)) -> tuple[int, int]:
+        emu._smbus_write(0, 0xFF)
+        emu._smbus_write(4, address)
+        emu._smbus_write(3, 0x9F)
+        emu._smbus_write(5, data[0])
+        emu._smbus_write(6, data[1])
+        emu._smbus_write(2, 0x4C)  # word data
+        return emu.smbus[5], emu.smbus[6]
+
+    assert transfer(0xD3) == (0, 0)
+    transfer(0xD2, (0x00, 0x24))
+    assert transfer(0xD3) == (0x00, 0x24)
+
+
 @pytest.mark.parametrize(
     "out, body, writes",
     [

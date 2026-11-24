@@ -3806,8 +3806,11 @@ class BiosEmulator:
                 # pylint: disable-next=attribute-defined-outside-init
                 self.smbus_next = (offset + 1) & 0xFF
             self.smbus[5], self.smbus[6] = self._device_word(address, eeprom, offset)
-        elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
+        elif value >> 2 & 7 in (2, 3) and address in self.smbus_devices:  # byte/word data
             self._device_store(address, offset, self.smbus[5])
+            if value >> 2 & 7 == 3:  # (b8df12's boot block writes its clock generator's
+                # word 9Fh, waits for the reset and reads the word back: bit 2 set = done)
+                self._device_store(address, offset + 1 & 0xFF, self.smbus[6])
         if (
             value >> 2 & 7 == 5
             and not self.smbus[4] & 1
