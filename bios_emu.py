@@ -969,6 +969,10 @@ P4_RATIO_CMP = bytes.fromhex("66B92C0000000F3266C1E81838D874")
 # for a ratio it may not change (sp30221 resets until the ratio is the one its jumpers give):
 # the jne becomes a jmp
 P4_RATIO_FIXED = bytes.fromhex("6633C9B12C0F3266A90000100075")
+# "mov dx,0F000h / in ax,dx / or ax,20h": the boot block of AMI's 12/15/93 core on an Intel
+# board (s76bios) sets bit 5 of port F000h, the flash's address line A16, and jumps to the
+# reset vector: the two 64 KB halves of its 128 KB trade places at E0000/F0000 (_a16_switch)
+A16_SWITCH = bytes.fromhex("BA00F0ED0D2000")
 # "mov ecx,2Ch / rdmsr" (EBC_FREQUENCY_ID) where the emulator plays a Northwood
 # (cpu_p4_signature): "mov eax,10000000h / cdq", ratio 16 at a 100 MHz bus (code 0), a
 # 1.6 GHz Pentium 4 (Dell's PLUS 1.10 multiplies the two for its clock line: 0 MHz)
@@ -1544,6 +1548,7 @@ class BiosEmulator:
         # the flash's other 128 KB (set by acer_setup), its bank register: _flash_bank
         self.flash_low, self.flash_upper = b"", True
         self.flash_sio_open, self.flash_sio_index = 0, 0
+        self.a16_switch = len(rom) == 0x20000 and A16_SWITCH in rom  # (see A16_SWITCH)
         self.scat_regs = bytearray(b"\xff" * 256)
         self.scat_regs[0x40], self.scat_regs[0x45], self.scat_regs[0x48] = 1, 0x37, 0xC0
         self.cr0_at_reset = 0  # (set by a driver whose POST checks it: chips_setup)
@@ -2112,6 +2117,19 @@ class BiosEmulator:
         self.flash_upper = upper
         shown, self.flash_low = self.flash_low, self.rom_view[0x20000:]
         self.rom_view = self.rom_view[:0x20000] + shown
+        for block in range(8, 16):
+            if not self._reads_ram(block):
+                at = block * 0x4000
+                self.uc.mem_write(SHADOW_BASE + at, self.rom_view[at : at + 0x4000])
+        _flush_tb(self.uc)
+
+    def _a16_switch(self) -> None:
+        """Port F000h bit 5 set (A16_SWITCH, once): the ROM's lower 64 KB at F0000, its upper
+        64 KB, the boot block, at E0000. Without it the boot block jumps to its own reset
+        vector again and POST restarts for ever."""
+        self.a16_switch = False
+        view = self.rom_view
+        self.rom_view = view[:0x20000] + view[0x30000:] + view[0x20000:0x30000]
         for block in range(8, 16):
             if not self._reads_ram(block):
                 at = block * 0x4000
@@ -4585,6 +4603,8 @@ class BiosEmulator:
             return
         if self.flash_low and port in (0x3F0, 0x3F1):
             self._flash_bank(port, value & 0xFF)
+        if self.a16_switch and port == 0xF000 and value & 0x20:
+            self._a16_switch()
         if (
             self.chip_smbus
             and self.smbus_base is not None

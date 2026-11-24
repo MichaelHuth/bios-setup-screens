@@ -129,6 +129,17 @@ def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
     assert memory(emu, OUT, 1) != b"\x5e"
 
 
+def test_port_f000h_bit_5_brings_the_lower_64_kb_to_f0000() -> None:
+    # s76bios's boot block: mov dx,0F000h / in ax,dx / or ax,20h / out dx,ax / jmp F000:FFF0
+    switch = bytes.fromhex("ba00f0ed0d2000ef") + b"\xea" + struct.pack("<HH", 0xFFF0, 0xF000)
+    lower = rom(DS0 + b"\xb0\x4c" + store_al(OUT) + HALT)  # its reset vector: "L"
+    emu = bios_emu.BiosEmulator(lower + rom(switch))
+    assert emu.a16_switch
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) == b"L"
+    assert memory(emu, 0xE0000 + CODE_AT, len(switch)) == switch  # the boot block at E000
+
+
 def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     image = bytearray(rom(HALT))
     image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VIA south bridge's ID)
