@@ -354,6 +354,8 @@ class PhoenixTextSetup(PhoenixSetup):
         )
         emu.protect_e000 = protect_e000
         emu._protect()
+        if protect_e000:  # (the second POST, see below: ALR 9200's takes 50 s alone)
+            emu.max_seconds = 240
         # (with no chipset found the POST of a whole image may still get through: Anigma
         # P4D-420TX, Intel 420TX "Saturn", which the ROM addresses by device number only)
         if not emu.pci_devices and len(rom) <= 0x10000:
