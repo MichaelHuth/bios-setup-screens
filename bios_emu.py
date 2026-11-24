@@ -950,6 +950,15 @@ P4_SIGNATURE_HOSTS = (0x1A30,)
 # reset (Dell's PLUS 1.10 keeps DL from the reset in CMOS for its "Processor 0 ID")
 P4_SIGNATURE = 0xF27
 CPU_BRANDS[0x1A30] = "Intel(R) Pentium(R) 4 CPU 2.00GHz"
+# other makers' Pentium 4 host bridges (VIA P4X266, P4M266, P4X400, PT880, PM880; SiS 645 to
+# 661): their POST names the processor by its brand string, Unicorn's "Intel Core Processor"
+CPU_BRANDS.update(
+    dict.fromkeys(
+        (0x3128, 0x3148, 0x3168, 0x3258, 0x3259)  # (VIA)
+        + (0x0645, 0x0646, 0x0648, 0x0650, 0x0651, 0x0655, 0x0661),  # (SiS)
+        "Intel(R) Pentium(R) 4 CPU 2.00GHz",
+    )
+)
 KBC_REPLIES = (0xFA, 0xAA)  # acknowledge, self-test passed
 # An interrupt the emulator delivers is entered through a stub written for it into the BIOS
 # data area's inter-application communication area (0000:04F0-04FF, which no BIOS uses): the
@@ -4536,6 +4545,18 @@ class BiosEmulator:
                 (self.reset_edx, 0, 0, features),
             ):
                 uc.reg_write(reg, value)
+            return 1
+        if (
+            leaf >= 0x80000000
+            and self.reset_edx is not None
+            and not self.cpu_amd
+            and self.reset_edx >> 8 & 0x0F <= 6
+        ):
+            # an Intel processor up to the Pentium III has no extended leaves, so no brand
+            # string: the BIOS names it from its own table (not Unicorn's "Intel Core
+            # Processor")
+            for reg in (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX):
+                uc.reg_write(reg, 0)
             return 1
         if self.cpu_brand is None:
             return 0
