@@ -228,13 +228,17 @@ class WinBios:
             if (
                 not self.in_post
                 and pause is not None
-                and not emu.stopped_reason.startswith(
-                    ("booting", "instruction limit", "time limit")
+                and (
+                    not emu.stopped_reason.startswith(
+                        ("booting", "instruction limit", "time limit")
+                    )
+                    or b"AMIBIOSS" not in emu.uc.mem_read(0xF0000, 0x10000)
                 )
             ):
-                # (POST fails after the pause, mpe-401's EISA POST: setup from the pause; the
-                # loader switches the shadow RAM off to read the ROM's modules at F000, which
-                # a board with no chipset modelled does not do: the ROM's half put there)
+                # (POST fails after the pause, mpe-401's EISA POST, or loops with the runtime
+                # gone, s76bios: setup from the pause; the loader switches the shadow RAM off
+                # to read the ROM's modules at F000, which a board with no chipset modelled
+                # does not do: the ROM's half put there)
                 emu.restore(pause)
                 emu.stopped_reason = "booting (setup entered at the error pause)"
                 halves = [rom[h : h + 0x10000] for h in range(0, len(rom), 0x10000)]
