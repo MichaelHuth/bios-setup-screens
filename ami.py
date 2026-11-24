@@ -233,10 +233,11 @@ def extract(data: bytes) -> tuple[dict, list[dict]]:
     return info, modules
 
 
-# the POST's search of a processor table (AMI cores of about 1995-2000: WinBIOS 95, Simple/Hi-Flex,
+# the POST's search of a processor table (AMI cores of about 1995-2001: WinBIOS 95, Simple/Hi-Flex,
 # Easy Setup): the signature POST kept from EDX at reset, stepping masked ("and al,0F0h / or
-# cl,cl / je / or al,0Fh"), then "mov bx,<table>" in the POST module's segment
-CPU_TABLE_SEARCH = re.compile(rb"\x24\xf0\x0a\xc9\x74\x02\x0c\x0f\xbb(..)\xe8", re.S)
+# cl,cl / je / or al,0Fh", later "mov ax,dx / or al,0Fh"), then "mov bx,<table>" in the POST
+# module's segment
+CPU_TABLE_SEARCH = re.compile(rb"(?:\x24\xf0\x0a\xc9\x74\x02|\x8b\xc2)\x0c\x0f\xbb(..)\xe8", re.S)
 
 
 def cpu_signature(modules: list[dict]) -> tuple[int, bool] | None:
@@ -254,18 +255,21 @@ def cpu_signature(modules: list[dict]) -> tuple[int, bool] | None:
         data = m.get("data") or b""
         if m.get("id") != 0:
             continue
-        for k, found in enumerate(CPU_TABLE_SEARCH.finditer(data)):
+        empty_before = False
+        for found in CPU_TABLE_SEARCH.finditer(data):
             table = struct.unpack("<H", found.group(1))[0]
             entries = []
             for at in range(table + 4, min(len(data) - 5, table + 4 + 6 * 40), 6):
                 sig, flags = struct.unpack_from("<HH", data, at)
-                if sig in (0, 0xFFFF):
+                if sig == 0 or sig >= 0xFF00:  # (the unknown CPU: FFFFh, later FF0Fh)
                     break
                 entries.append((sig, flags))
-            if not entries:
+            # (OverDrives, type 1, are not taken: dkf2111 has a table of them first)
+            ordinary = [s for s, _ in entries if not s >> 12]
+            if not ordinary:
+                empty_before = empty_before or not entries
                 continue
-            ordinary = [s for s, _ in entries if not s >> 12]  # (OverDrives: type 1)
-            sig = max(ordinary, key=lambda s: (s >> 8 & 15, s >> 4 & 15), default=entries[0][0])
-            return (sig & 0xFFF0 | 1 if sig & 0x0F == 0x0F else sig), k > 0
+            sig = max(ordinary, key=lambda s: (s >> 8 & 15, s >> 4 & 15))
+            return (sig & 0xFFF0 | 1 if sig & 0x0F == 0x0F else sig), empty_before
         return None
     return None

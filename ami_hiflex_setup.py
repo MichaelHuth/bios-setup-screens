@@ -15,11 +15,35 @@ Worked out on a PCChips M572 BIOS (02/24/1999, Intel 430TX + PIIX4):
 from __future__ import annotations
 
 import time
+from typing import Any
+
+from unicorn import UC_HOOK_BLOCK
+from unicorn.x86_const import (
+    UC_X86_REG_EAX,
+    UC_X86_REG_EBP,
+    UC_X86_REG_EBX,
+    UC_X86_REG_ECX,
+    UC_X86_REG_EDI,
+    UC_X86_REG_EDX,
+    UC_X86_REG_ESI,
+    UC_X86_REG_ESP,
+)
 
 import ami
 import ami_setup
 import award_emu_setup
 import bios_emu
+
+SPIN_REGS = (
+    UC_X86_REG_EAX,
+    UC_X86_REG_EBX,
+    UC_X86_REG_ECX,
+    UC_X86_REG_EDX,
+    UC_X86_REG_ESI,
+    UC_X86_REG_EDI,
+    UC_X86_REG_EBP,
+    UC_X86_REG_ESP,
+)
 
 # (Aaeon SBC-570's says "HIFLEX SETUP UTILTY")
 # (Biostar MB-8500TUR, AMIBIOS 0622: "AMIBIOS SETUP - BIOS SETUP UTILITIES", the second part
@@ -52,14 +76,29 @@ def _modules(rom: bytes) -> list[dict]:
 
 
 def _spinning(emu: bios_emu.BiosEmulator) -> bool:
-    """POST stopped at its instruction or time limit in a tight loop: as many instructions again
-    end within the same 64 bytes (a slow POST, 7ZXH's long wait at F000:04FEh, gets out and
-    goes on as it is)."""
-    if not emu.stopped_reason.endswith("limit reached"):
+    """POST stopped at its instruction limit in a loop that never ends: in a few thousand more
+    instructions a block starts again with the same registers (dkf2111's MTRR sizing, EAX
+    shifted to 0). A slow POST's waits (7ZXH at F000:04FEh, 011226s) count something and
+    go on as they are."""
+    if emu.stopped_reason != "instruction limit reached":
         return False
-    at = emu._code_address()
-    emu.resume()
-    return emu.stopped_reason.endswith("limit reached") and abs(emu._code_address() - at) < 64
+    seen: set[tuple[int, ...]] = set()
+    repeated = [False]
+
+    def block(uc: Any, address: int, _size: int, _user: object) -> None:
+        state = (address, *(uc.reg_read(r) for r in SPIN_REGS))
+        repeated[0] = repeated[0] or state in seen
+        seen.add(state)
+
+    hook = emu.uc.hook_add(UC_HOOK_BLOCK, block)
+    bios_emu._flush_tb(emu.uc)  # (code translated before the hook would not call it)
+    limit, emu.max_instructions = emu.max_instructions, 20_000
+    try:
+        emu.resume()
+    finally:
+        emu.max_instructions = limit
+        emu.uc.hook_del(hook)
+    return repeated[0]
 
 
 def is_hiflex(rom: bytes) -> bool:
