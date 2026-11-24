@@ -18718,8 +18718,10 @@
   "text": "2356d2d7d5d6f15d"
  },
  "9b2212f266eb9508db22f4491c5e02f9aaf570167036299c36bfe281d19fc788": {
+  "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
   "name": "881032j-61d60e2b03bf5372694890.zip",
-  "result": "unsupported"
+  "screens": 8,
+  "text": "f2802e9a525b4330"
  },
  "9b3ebced35bf93379ec16981537bbf307599d9329b9d672d17c485cfce434c68": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -19736,8 +19738,10 @@
   "text": "721829cec78789c9"
  },
  "a33d7d69f45fc25fe2d76fbf1a4d6e8f0d2f09c3ccd7d7125115b021d940860d": {
+  "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
   "name": "881avio-01-08-96-31e-63d1341e2953e579484921.zip",
-  "result": "unsupported"
+  "screens": 8,
+  "text": "696a32c74df12ac1"
  },
  "a33ffa6d1ef6dd58c6f7c5a929345bb6becd4f3412a9a26458b90d739ea83118": {
   "bios": "AMIBIOS with the Easy Setup (text mode, menu bar), captured ",
@@ -20372,8 +20376,10 @@
   "text": "f8b152a2d8b5437d"
  },
  "a86d4a19194cd7aaf9eea05e14d8f14973db12175a763dcfce0af26cf8ea8d24": {
+  "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
   "name": "n28f001bx-t-at-plcc32-6aaabee5bbef5967437147.BIN",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "e64bded93b7c9066"
  },
  "a8780fd51d19daa659a542ebc5fec6a21f2a4bbba742731f399a108a3d503a7d": {
   "bios": "Award 4.5x setup code in LHA module '2A5LDV3A.BIN'",
