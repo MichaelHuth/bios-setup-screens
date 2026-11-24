@@ -262,6 +262,7 @@ class WinBios:
                 if not host_id and (0, 0) not in emu.pci_devices:
                     # (no chipset found, its IDs packed: POST again on a 430FX, 5280-v101's
                     # "INTEL-FX", whose POST cleared F0000 as plain RAM and ran into it)
+                    # pylint: disable-next=non-parent-init-called
                     self.__init__(rom, HOST_430FX)  # type: ignore[misc]
                     return
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
