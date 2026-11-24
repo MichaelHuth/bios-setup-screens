@@ -183,9 +183,11 @@ STRAPS = {
 # SMM, which is how POST copies the SMM handler there): host ID -> register
 SMRAM_REGS = {
     **dict.fromkeys((0x1A30, 0x2560, 0x2570, 0x2578, 0x3340, 0x3580), 0x9D),
-    **dict.fromkeys((0x7180, 0x7190, 0x7192, 0x7120, 0x7122, 0x7124, 0x1130), 0x72),
+    **dict.fromkeys((0x7180, 0x7190, 0x7192, 0x7120, 0x7122, 0x7124), 0x72),
 }
-I810_HOSTS = (0x7120, 0x7122, 0x7124)
+# the 810's and 815's own SMRAM control at 70h (bits 3-2; s58mf2s1's POST writes C4h there to
+# copy its SMM code, and 72h is something else on the 815)
+I810_HOSTS = (0x7120, 0x7122, 0x7124, 0x1130)
 PC133_HOSTS = (0x1A30,)  # SDRAM boards whose DIMMs must be PC133 (845)
 SELF_CLEARING = {
     0x2560: {0x57: 0x02},
