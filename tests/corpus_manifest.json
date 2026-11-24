@@ -19490,8 +19490,10 @@
   "text": "d5b67b7210e59d32"
  },
  "a14c7027e9623677a28263c0728eb14de09d1720269f63e333268c11d1ecacf1": {
+  "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
   "name": "5cpi123b-616f62fd29036082533551.zip",
-  "result": "unsupported"
+  "screens": 9,
+  "text": "01f86739b1960b9c"
  },
  "a16ae759ba47a7ed9c2a2fe6599bc39e76bfbd4b21a83fbeb8749b44d4244521": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -24372,8 +24374,10 @@
   "text": "d9fd61bc296f8467"
  },
  "c8dd19f85afe212d737fe27d9bbb9d17bebc1acfde63d067b6e9c9d3fbbb99a2": {
+  "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
   "name": "5280-v101-623c8e219b430238407019.zip",
-  "result": "unsupported"
+  "screens": 9,
+  "text": "c2abaa96589ad877"
  },
  "c8e184ab36a130ac506708a6866fe7673adfb6cc7f9611147e49935dba4b4c3c": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
