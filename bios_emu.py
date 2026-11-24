@@ -1571,6 +1571,10 @@ class BiosEmulator:
         # vector, took its first key (DEL, F1 at the error pause), as a person sees it
         self.from_reset = False
         self.post_screen: Screen | None = None
+        # the last screen with text before the first key, at a new POST code or before a clear
+        # (mode set, a full-screen scroll): what POST showed when it goes into setup by itself
+        # (AMI Hi-Flex boards that set up a new processor: no error pause, no key)
+        self.cleared_screen: Screen | None = None
         self.fill_solid_font = False  # see screen() (set by winbios_setup)
         self.mylex_counter = False  # port 800h counts bytes (set by mylex_setup)
         self.protect_socket = False  # see _protect (set by mr_setup)
@@ -1745,14 +1749,18 @@ class BiosEmulator:
         self.uc.hook_add(UC_HOOK_INSN, self._out, None, 1, 0, UC_X86_INS_OUT)
         self.cpu_brand = CPU_BRANDS.get(host_id)
         self.cpu_p4_signature = host_id in P4_SIGNATURE_HOSTS
+        # the processor signature in EDX after a reset, where a driver knows which processors
+        # the BIOS expects (AMI's cores of about 1995-2000 look it up in their own table: one
+        # they do not list is an unknown CPU, whose internal cache allows write-through only);
+        # CPUID 1 then answers it too (their Pentium II code checks the model it was told)
+        self.reset_edx: int | None = None
         # a BIOS that knows only AMD processors (Socket A: no "GenuineIntel" in it) gets an
         # Athlon; with Intel's vendor GA-7ZMMH's AMI found no CPU entry and jumped through an
         # index of FFh
         self.cpu_amd = b"AuthenticAMD" in rom + hints and b"GenuineIntel" not in rom + hints
         if self.cpu_amd:
             self.cpu_brand = "AMD Athlon(tm) Processor"
-        if self.cpu_brand is not None:
-            self.uc.hook_add(UC_HOOK_INSN, self._cpuid, None, 1, 0, UC_X86_INS_CPUID)
+        self.uc.hook_add(UC_HOOK_INSN, self._cpuid, None, 1, 0, UC_X86_INS_CPUID)
 
     # --- machine state --------------------------------------------------------------------
 
@@ -3354,6 +3362,7 @@ class BiosEmulator:
         r, uc = self.uc.reg_read, self.uc
         if ah == 0x00:  # mode set: ROM font and palette, blinking on; AL bit 7 keeps the screen
             if not r(UC_X86_REG_AL) & 0x80:
+                self._note_cleared_screen()
                 self._clear_screen(0x07)
                 for plane in self.vga_planes:  # graphics memory too
                     plane[:] = bytes(len(plane))
@@ -3377,6 +3386,8 @@ class BiosEmulator:
             uc.reg_write(UC_X86_REG_DX, row << 8 | col)
             uc.reg_write(UC_X86_REG_CX, 0x0607)
         elif ah in (0x06, 0x07):
+            if r(UC_X86_REG_AL) == 0 and r(UC_X86_REG_CX) == 0 and r(UC_X86_REG_DH) >= ROWS - 1:
+                self._note_cleared_screen()  # (the whole screen cleared)
             self._scroll(
                 r(UC_X86_REG_AL),
                 r(UC_X86_REG_BH),
@@ -4506,8 +4517,22 @@ class BiosEmulator:
 
     def _cpuid(self, uc: Uc, _user: object) -> int:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)
-        as on the board's own CPUs; the emulated CPU answers everything else."""
+        as on the board's own CPUs, and the signature (CPUID 1) a driver chose (reset_edx); the
+        emulated CPU answers everything else."""
         leaf = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
+        if leaf == 1 and self.reset_edx is not None and not self.cpu_amd:
+            family = self.reset_edx >> 8 & 0x0F
+            # (features of that time: FPU ... CMOV and MMX from the Pentium II on, the
+            # Pentium's base set, a 486's FPU)
+            features = 0x0080FBFF if family >= 6 else 0x000001BF if family == 5 else 0x00000001
+            for reg, value in zip(
+                (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
+                (self.reset_edx, 0, 0, features),
+            ):
+                uc.reg_write(reg, value)
+            return 1
+        if self.cpu_brand is None:
+            return 0
         if self.cpu_p4_signature and leaf == 2 and not self.cpu_amd:
             # the Northwood's cache descriptors: 512 KB L2 (7Bh), 12K-uop trace cache
             # (70h), no L3 (40h), 8 KB L1 data (66h), TLBs (5Bh, 50h)
@@ -4705,6 +4730,7 @@ class BiosEmulator:
                 self._pass_rom_sum()
             if self.phoenix_rom:
                 self._phoenix_cpu_search()
+            self._note_cleared_screen()  # (what POST shows at each of its steps)
             # POST back in the ROM after a part that ran in RAM: the code translated so far
             # is dropped (outside the run; inside a hook it spoilt Unicorn's hook list).
             # Unicorn crashed (access violation) when a REP STOSD cleared memory holding
@@ -5126,6 +5152,8 @@ class BiosEmulator:
     # --- run --------------------------------------------------------------------------------
 
     def _reset_signature(self) -> int:
+        if self.reset_edx is not None and not self.cpu_amd:
+            return self.reset_edx
         return P4_SIGNATURE if self.cpu_p4_signature and not self.cpu_amd else 0x0435
 
     def run(
@@ -5135,6 +5163,8 @@ class BiosEmulator:
         self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
         if self.from_reset and self.cpu_p4_signature and not self.cpu_amd:
             uc.reg_write(UC_X86_REG_EDX, P4_SIGNATURE)  # (as after power-on)
+        if self.from_reset and self.reset_edx is not None and not self.cpu_amd:
+            uc.reg_write(UC_X86_REG_EDX, self.reset_edx)
         if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
@@ -5641,6 +5671,12 @@ class BiosEmulator:
                 break
         for r, v in saved.items():
             uc.reg_write(r, v)
+
+    def _note_cleared_screen(self) -> None:
+        if self.from_reset and self.post_screen is None and self.video_mode not in PLANAR_MODES:
+            screen = self.screen()
+            if screen.text().strip():
+                self.cleared_screen = screen
 
     def _note_post_screen(self) -> None:
         """Keep the screen as the POST screen, if this is the first key POST takes."""

@@ -337,6 +337,19 @@ def test_a_word_written_to_the_clock_generator_reads_back() -> None:
     assert transfer(0xD3) == (0x00, 0x24)
 
 
+def test_a_chosen_processor_signature_is_in_edx_at_reset_and_answers_cpuid_1() -> None:
+    from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ESI
+
+    # mov esi,edx ; mov eax,1 ; cpuid ; hlt
+    code = b"\x66\x89\xd6" + b"\x66\xb8\x01\x00\x00\x00" + b"\x0f\xa2" + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.reset_edx = 0x0651
+    emu.run(0xF000, 0xFFF0)
+    assert emu.uc.reg_read(UC_X86_REG_ESI) & 0xFFFFFFFF == 0x0651
+    assert emu.uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF == 0x0651
+    assert emu.uc.reg_read(UC_X86_REG_EDX) & 0x00800000  # (MMX: a Pentium II)
+
+
 @pytest.mark.parametrize(
     "out, body, writes",
     [

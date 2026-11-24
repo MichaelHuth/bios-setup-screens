@@ -8,6 +8,7 @@ address of the one before it. A compressed body is a bare LH5 stream (no LHA hea
 
 from __future__ import annotations
 
+import re
 import struct
 
 import lzh
@@ -230,3 +231,38 @@ def extract(data: bytes) -> tuple[dict, list[dict]]:
                 part_info["boot_block"]["offset"] += shift
             info, modules = part_info, part_modules
     return info, modules
+
+
+# the POST's search of a processor table (AMI cores of about 1995-2000: WinBIOS 95, Simple/Hi-Flex,
+# Easy Setup): the signature POST kept from EDX at reset, stepping masked ("and al,0F0h / or
+# cl,cl / je / or al,0Fh"), then "mov bx,<table>" in the POST module's segment
+CPU_TABLE_SEARCH = re.compile(rb"\x24\xf0\x0a\xc9\x74\x02\x0c\x0f\xbb(..)\xe8", re.S)
+
+
+def cpu_signature(modules: list[dict]) -> int | None:
+    """A processor signature the BIOS's own table lists, for EDX at reset (one it does not list
+    is an unknown CPU: "(Unknown)" on the POST screen, its internal cache write-through only,
+    so the Optimal write-back shows as "Reserved"). The table: its end word, 2 bytes, then
+    6-byte entries of signature and flags, FFFFh the unknown CPU (its flags allow write-through
+    only). The newest ordinary processor (type 0, highest family and model) is taken: the one
+    the board was mostly sold with, whose model-specific code (Pentium II L2 set-up) the POST
+    has; entries ending in Fh match any stepping. The first table is Intel's (on AMD boards it
+    is empty: none then, as the emulated processor is an Intel one)."""
+    for m in modules:
+        data = m.get("data") or b""
+        found = CPU_TABLE_SEARCH.search(data) if m.get("id") == 0 else None
+        if found is None:
+            continue
+        table = struct.unpack("<H", found.group(1))[0]
+        entries = []
+        for at in range(table + 4, min(len(data) - 5, table + 4 + 6 * 40), 6):
+            sig, flags = struct.unpack_from("<HH", data, at)
+            if sig in (0, 0xFFFF):
+                break
+            entries.append((sig, flags))
+        if not entries:
+            return None
+        ordinary = [s for s, _ in entries if not s >> 12]  # (OverDrives: type 1)
+        sig = max(ordinary, key=lambda s: (s >> 8 & 0x0F, s >> 4 & 0x0F), default=entries[0][0])
+        return sig & 0xFFF0 | 1 if sig & 0x0F == 0x0F else sig
+    return None

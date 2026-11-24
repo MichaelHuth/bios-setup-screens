@@ -182,14 +182,17 @@ class WinBios:
         # reset through CF9h): POST again with the CMOS it left
         cmos = ami_setup.default_cmos()
         try:  # the chipset's PCI IDs may be only in the compressed modules (Tyan S1563S)
-            hints = b"".join(m.get("data") or b"" for m in ami.extract(rom)[1])
+            modules = ami.extract(rom)[1]
         except Exception:
-            hints = b""
+            modules = []
+        hints = b"".join(m.get("data") or b"" for m in modules)
+        signature = ami.cpu_signature(modules)
         for _ in range(3):
             emu = bios_emu.BiosEmulator(
                 rom, cmos=cmos, max_instructions=300_000_000, hints=hints, host_id=host_id
             )
             emu.max_seconds = 240  # (the instructions decide, not how busy the machine is: a778)
+            emu.reset_edx = signature  # (Internal Cache "Reserved" for an unknown CPU)
             if self.kind == "94":
                 emu.fill_solid_font = True
                 # (5280-v101's boot block sets CMOS 78h bit 7 and resets through CF9h once)

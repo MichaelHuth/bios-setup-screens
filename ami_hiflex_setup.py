@@ -79,10 +79,12 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
         # above its end (as on DIMMs of fewer rows), and POST waits for a device at I/O 5F00h
         # (unknown) to read 02h, ready; POST takes long
         m768 = b"$PCCHIPSM768VMR" in rom + hints
+        signature = ami.cpu_signature(modules)  # (a processor POST knows: see ami)
         for _ in range(5):  # some boards reset early in POST (Zida LX98: after setting the
             # CPU ratio in the CMOS): POST again with the CMOS they left. One that boots
             # without an error pause: again, with DEL tapped once POST offers it
             emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=100_000_000, hints=hints)
+            emu.reset_edx = signature
             if not emu.pci_devices:
                 raise ValueError(
                     f"this board's chipset is not emulated ({bios_emu.EMULATED}), "
@@ -94,7 +96,11 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             if cmos_hi is not None:
                 emu.cmos_hi[:] = cmos_hi
             screen = emu.run(0xF000, 0xFFF0)
-            if emu.stopped_reason == "reset":
+            if emu.stopped_reason.endswith("limit reached") and signature is not None:
+                # POST lost in the processor's own set-up (dkf2111: its MTRR sizing loops on
+                # a memory size still 0): again as an unknown processor
+                signature = None
+            elif emu.stopped_reason == "reset":
                 cmos, cmos_hi = bytes(emu.cmos), bytes(emu.cmos_hi)
             elif emu.stopped_reason.startswith("booting") and spoils < 2:
                 # the CMOS the reset left is valid: spoil its checksum, so that POST stops at
@@ -147,6 +153,7 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                 timer_irq=True,
             )
             retry.max_seconds = 400
+            retry.reset_edx = signature
             # (400 s for all rounds: each one after an instruction limit would run another
             # 600 M instructions, and a board the retry does not help took 1270 s, s08-11)
             deadline = time.monotonic() + retry.max_seconds

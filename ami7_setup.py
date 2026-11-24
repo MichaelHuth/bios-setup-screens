@@ -153,6 +153,7 @@ class AmiBios7(phoenix_setup.PhoenixSetup):
             raise ValueError("not an AMIBIOS 7 image with the new setup utility")
         _, modules = _modules(rom)
         hints = b"".join(m.get("data") or b"" for m in modules)
+        self.signature = ami.cpu_signature(modules)  # (a processor POST knows: see ami)
         try:
             self._start(rom, hints, False)
         except ValueError as e:
@@ -185,6 +186,7 @@ class AmiBios7(phoenix_setup.PhoenixSetup):
                 ram_mb=64,
                 timer_irq=serverworks,
             )
+            emu.reset_edx = getattr(self, "signature", None)
             if serverworks:
                 emu.serverworks, emu.smbus_base = True, 0x580
                 # (POST tests text memory if INT 10h stays in F000, with a count the APIC

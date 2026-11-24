@@ -2263,10 +2263,15 @@ class _Screens(list):
 
 def _with_post(bios: Any) -> _Screens:
     """bios.screens(), and the screen POST showed when it took its first key (DEL, F1 at
-    the error pause), where the emulator ran POST to get to setup."""
-    post = getattr(getattr(bios, "emu", None), "post_screen", None)
+    the error pause), where the emulator ran POST to get to setup. Where that is a setup page
+    (POST went into setup by itself), the last POST screen cleared before it."""
+    emu = getattr(bios, "emu", None)
+    post = getattr(emu, "post_screen", None)
     screens = _Screens(bios.screens())
-    if post is not None and all(post.text() != s.text() for _, s, _ in screens):
+    pages = {s.text() for _, s, _ in screens}
+    if post is None or post.text() in pages:
+        post = getattr(emu, "cleared_screen", None)
+    if post is not None and post.text() not in pages:
         screens.post = post
     return screens
 
