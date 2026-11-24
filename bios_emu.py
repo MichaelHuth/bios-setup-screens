@@ -986,6 +986,15 @@ SMI_FLAG_WAIT = bytes.fromhex("26803E2F800175F8")
 # run from its copy in RAM after POST code D6h; not 0, it goes to diskette recovery (6610: an
 # image changed after it was built). The copy's or becomes xor: the sum passes
 ROM_SUM_CHECK = re.compile(rb"\x68\x00\xe0\x1f\xe8[\x04\x05]\x00\x66\x0b\xc0")
+# PhoenixBIOS 4.0's CPU table search ("mov si,<table> / cmp si,<end> / jae / cmp cs:[si+2],al /
+# je found / add si,7 / jmp / mov ax,45h / jmp back"): the type code POST put in CMOS for the
+# emulated CPU (Unicorn's 306C4h) is in no entry, and neither is its fallback 45h, so it
+# searched for good (881032j, 881avio, Fujitsu FMV 2.03). In memory, once unpacked, the
+# fallback becomes "mov si,<table> / nop / nop": the first entry
+PHOENIX_CPU_SEARCH = re.compile(
+    rb"\xbe(..)\x81\xfe..\x73\x0b\x2e\x38\x44\x02\x74\x0a\x83\xc6\x07\xeb\xef\xb8\x45\x00\xeb\xe7",
+    re.S,
+)
 # "test byte es:[edi],1 (or 2) / je done / cmp dword es:[esi],0 / jne $-15": Dell's Phoenix 1.10
 # moves SMBASE through an SMI to itself and waits for the handler to clear a flag in SMRAM
 # (or for the APIC timer at FEE00390h to run out, which it takes for a failure): the je
@@ -1245,6 +1254,7 @@ class BiosEmulator:
             or SMI_FLAG_WAIT in hints + rom
         )
         self.rom_sum_check = ROM_SUM_CHECK.search(rom) is not None  # (see _pass_rom_sum)
+        self.phoenix_rom = b"Phoenix" in rom  # (see _phoenix_cpu_search)
         self.post_codes_seen = set()  # memory is searched once per POST code, not per write
         # SMBus host controller (ICH/PIIX4 registers) with a DIMM's SPD EEPROM at address 50h
         self.smbus_base, self.smbus, self.smbus_busy = None, bytearray(16), 0
@@ -4586,6 +4596,16 @@ class BiosEmulator:
             self.uc.mem_write(m.end() - 2, b"\x33")  # xor eax,eax
         _flush_tb(self.uc)
 
+    def _phoenix_cpu_search(self) -> None:
+        """PHOENIX_CPU_SEARCH below 1 MB: its fallback takes the table's first entry."""
+        memory = bytes(self.uc.mem_read(0, 0x100000))
+        patched = False
+        for m in PHOENIX_CPU_SEARCH.finditer(memory):
+            self.uc.mem_write(m.end() - 5, b"\xbe" + m.group(1) + b"\x90\x90")
+            patched = True
+        if patched:
+            _flush_tb(self.uc)
+
     def _end_delay_loop(self, uc: Uc) -> None:
         """A loop of nothing but a delay port write (out to it, jmp $+2s, loop back: Gigabyte
         GA-6VXD7's AMI waits 4096 of them, again and again) ends after this pass: CX = 1."""
@@ -4678,6 +4698,8 @@ class BiosEmulator:
                 self._patch_msr_reads()
             if value & 0xFF == 0xD6 and self.rom_sum_check:
                 self._pass_rom_sum()
+            if self.phoenix_rom:
+                self._phoenix_cpu_search()
             # POST back in the ROM after a part that ran in RAM: the code translated so far
             # is dropped (outside the run; inside a hook it spoilt Unicorn's hook list).
             # Unicorn crashed (access violation) when a REP STOSD cleared memory holding

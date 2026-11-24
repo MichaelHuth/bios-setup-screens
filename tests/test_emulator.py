@@ -129,6 +129,18 @@ def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
     assert memory(emu, OUT, 1) != b"\x5e"
 
 
+def test_phoenix_cpu_table_search_takes_the_first_entry_when_none_matches() -> None:
+    # mov si,6070h / cmp si,6103h / jae +11 / cmp cs:[si+2],al / je +10 / add si,7 / jmp -17 /
+    # mov ax,45h / jmp -25 (881032j's runtime, unpacked in memory)
+    search = bytes.fromhex("be7060" "81fe0361" "730b" "2e384402" "740a" "83c607" "ebef")
+    search += bytes.fromhex("b84500" "ebe7")
+    emu = bios_emu.BiosEmulator(rom(HALT) + b"Phoenix")
+    assert emu.phoenix_rom
+    emu.uc.mem_write(0x9000, search)
+    emu._phoenix_cpu_search()
+    assert memory(emu, 0x9000 + len(search) - 5, 5) == bytes.fromhex("be70609090")
+
+
 def test_an_ami_boot_block_rom_sum_passes_in_its_copy_only() -> None:
     # push E000h / pop ds / call +4 / or eax,eax / ret (6610's boot block, run from RAM)
     check = bytes.fromhex("6800e01fe80400660bc0c3")
