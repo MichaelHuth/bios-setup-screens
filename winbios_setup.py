@@ -47,6 +47,7 @@ SCANCODES = {
     "pgup": [0xE0, 0x49, 0xE0, 0xC9],
 }
 DEL_KEY = [0x53, 0xD3]
+HOST_430FX = 0x122D  # (the host bridge tried when none is found: see WinBios)
 SPACE_KEY = [0x39, 0xB9]  # (TriGem: "Hit SPACE if you want to run SETUP")
 
 
@@ -172,7 +173,7 @@ def _in_setup(screen: Screen) -> bool:
 
 
 class WinBios:
-    def __init__(self, rom: bytes):
+    def __init__(self, rom: bytes, host_id: int = 0):
         self.kind = winbios_kind(rom)
         if not self.kind:
             raise ValueError("not an AMI WinBIOS image")
@@ -185,10 +186,14 @@ class WinBios:
         except Exception:
             hints = b""
         for _ in range(3):
-            emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=300_000_000, hints=hints)
+            emu = bios_emu.BiosEmulator(
+                rom, cmos=cmos, max_instructions=300_000_000, hints=hints, host_id=host_id
+            )
             emu.max_seconds = 240  # (the instructions decide, not how busy the machine is: a778)
             if self.kind == "94":
                 emu.fill_solid_font = True
+                # (5280-v101's boot block sets CMOS 78h bit 7 and resets through CF9h once)
+                emu.cf9_resets_in_place = 2
                 break
             key = SPACE_KEY if b"Hit SPACE if you want to run SETUP" in rom + hints else DEL_KEY
             emu.press_keys(key * 30, when_text="KB OK")
@@ -251,6 +256,11 @@ class WinBios:
             # (a POST that never ends, a778's PCI walks: the setup module is loaded from here
             # whichever limit stopped it)
             if not emu.stopped_reason.startswith(("booting", "instruction limit", "time limit")):
+                if not host_id and (0, 0) not in emu.pci_devices:
+                    # (no chipset found, its IDs packed: POST again on a 430FX, 5280-v101's
+                    # "INTEL-FX", whose POST cleared F0000 as plain RAM and ran into it)
+                    self.__init__(rom, HOST_430FX)  # type: ignore[misc]
+                    return
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
             runtime = bytes(emu.uc.mem_read(0xF0000, 0x10000))
             if b"AMIBIOSS" not in runtime and not emu.stopped_reason.startswith("booting"):
