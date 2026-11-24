@@ -5902,8 +5902,10 @@
   "text": "40692feeb2e7cb29"
  },
  "31d1a12ab24d92251fb0c9d0d79b13752cbb3c0650cead95e669559f434c47e4": {
+  "bios": "AMI WinBIOS (95 generation), captured by running the whole R",
   "name": "6610-623c95a2d91d5973860637.zip",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "b5eb2c6c7b6d002e"
  },
  "31d35ca44112073092101d7758b24d1d308c2226c57859ef304c34e82fdc821c": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
