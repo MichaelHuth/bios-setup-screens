@@ -12002,8 +12002,10 @@
   "text": "1416295e30dd6c8d"
  },
  "649529e6ea260814dfdf2bd21119cb9af2987f6e520c924f56a54d87f83c8c34": {
+  "bios": "PhoenixBIOS 4.0x (1994-96, text-mode menu-bar setup), captur",
   "name": "9200-61a38165434e7047701941-64770625145d3387486995.zip",
-  "result": "unsupported"
+  "screens": 10,
+  "text": "4d202e96dbf01f49"
  },
  "64c26ee42981b3949e4ba6863dffe09843cdbda59d16f8a9250533fa9693f611": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
