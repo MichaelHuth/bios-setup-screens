@@ -982,6 +982,10 @@ RDMSR_P4_PATCH = bytes.fromhex("66B8") + (16 << 24).to_bytes(4, "little") + byte
 # local APIC, ICR delivery mode SMI) to set a flag; there is no SMM here, the wait is left out
 SMI_CX_WAIT = bytes.fromhex("F7D1E304F7D1EBF8")  # (see the software SMI in _out)
 SMI_FLAG_WAIT = bytes.fromhex("26803E2F800175F8")
+# "push E000h / pop ds / call <sum> / or eax,eax": an AMI boot block's dword sum of its ROM,
+# run from its copy in RAM after POST code D6h; not 0, it goes to diskette recovery (6610: an
+# image changed after it was built). The copy's or becomes xor: the sum passes
+ROM_SUM_CHECK = re.compile(rb"\x68\x00\xe0\x1f\xe8[\x04\x05]\x00\x66\x0b\xc0")
 # "test byte es:[edi],1 (or 2) / je done / cmp dword es:[esi],0 / jne $-15": Dell's Phoenix 1.10
 # moves SMBASE through an SMI to itself and waits for the handler to clear a flag in SMRAM
 # (or for the APIC timer at FEE00390h to run out, which it takes for a failure): the je
@@ -1240,6 +1244,7 @@ class BiosEmulator:
             or P4_RATIO_FIXED in hints + rom
             or SMI_FLAG_WAIT in hints + rom
         )
+        self.rom_sum_check = ROM_SUM_CHECK.search(rom) is not None  # (see _pass_rom_sum)
         self.post_codes_seen = set()  # memory is searched once per POST code, not per write
         # SMBus host controller (ICH/PIIX4 registers) with a DIMM's SPD EEPROM at address 50h
         self.smbus_base, self.smbus, self.smbus_busy = None, bytearray(16), 0
@@ -4573,6 +4578,14 @@ class BiosEmulator:
             _flush_tb(self.uc)
         return patched
 
+    def _pass_rom_sum(self) -> None:
+        """ROM_SUM_CHECK in the boot block's copy in conventional memory: made to pass (the
+        ROM itself is left as it is, later checks of it see it unchanged)."""
+        memory = bytes(self.uc.mem_read(0, 0xA0000))
+        for m in ROM_SUM_CHECK.finditer(memory):
+            self.uc.mem_write(m.end() - 2, b"\x33")  # xor eax,eax
+        _flush_tb(self.uc)
+
     def _end_delay_loop(self, uc: Uc) -> None:
         """A loop of nothing but a delay port write (out to it, jmp $+2s, loop back: Gigabyte
         GA-6VXD7's AMI waits 4096 of them, again and again) ends after this pass: CX = 1."""
@@ -4663,6 +4676,8 @@ class BiosEmulator:
             self.post_codes_seen.add(value & 0xFF)  # a new POST step: modules may be unpacked
             if self.msr_patches:
                 self._patch_msr_reads()
+            if value & 0xFF == 0xD6 and self.rom_sum_check:
+                self._pass_rom_sum()
             # POST back in the ROM after a part that ran in RAM: the code translated so far
             # is dropped (outside the run; inside a hook it spoilt Unicorn's hook list).
             # Unicorn crashed (access violation) when a REP STOSD cleared memory holding

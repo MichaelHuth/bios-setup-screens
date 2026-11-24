@@ -129,6 +129,19 @@ def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
     assert memory(emu, OUT, 1) != b"\x5e"
 
 
+def test_an_ami_boot_block_rom_sum_passes_in_its_copy_only() -> None:
+    # push E000h / pop ds / call +4 / or eax,eax / ret (6610's boot block, run from RAM)
+    check = bytes.fromhex("6800e01fe80400660bc0c3")
+    image = bytearray(rom(HALT))
+    image[0x8000 : 0x8000 + len(check)] = check
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.rom_sum_check
+    emu.uc.mem_write(0xE000, check)  # (the copy at 0000:E000)
+    emu._pass_rom_sum()
+    assert memory(emu, 0xE000 + 7, 3) == bytes.fromhex("6633c0")  # xor eax,eax
+    assert memory(emu, 0xF8000 + 7, 3) == bytes.fromhex("660bc0")  # the ROM as it was
+
+
 def test_port_f000h_bit_5_brings_the_lower_64_kb_to_f0000() -> None:
     # s76bios's boot block: mov dx,0F000h / in ax,dx / or ax,20h / out dx,ax / jmp F000:FFF0
     switch = bytes.fromhex("ba00f0ed0d2000ef") + b"\xea" + struct.pack("<HH", 0xFFF0, 0xF000)
