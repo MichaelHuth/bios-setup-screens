@@ -5181,8 +5181,9 @@ class BiosEmulator:
     def use_processor(self, chosen: tuple[int, bool] | None) -> None:
         """The processor a driver chose from the BIOS's own table (ami.cpu_signature): its
         signature in EDX at reset and in CPUID 1; an AMD one where the BIOS lists no Intel
-        processor (an Athlon then, as for a BIOS without Intel's vendor string)."""
-        if chosen is None:
+        processor (an Athlon then, as for a BIOS without Intel's vendor string). A board that
+        takes only a Pentium 4 keeps its Northwood (cpu_p4_signature)."""
+        if chosen is None or self.cpu_p4_signature:
             self.reset_edx = None
             return
         self.reset_edx, amd = chosen

@@ -146,9 +146,12 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             if cmos_hi is not None:
                 emu.cmos_hi[:] = cmos_hi
             screen = emu.run(0xF000, 0xFFF0)
-            if signature is not None and _spinning(emu):
+            if signature is not None and (
+                emu.stopped_reason.startswith(("emulation error", "halted")) or _spinning(emu)
+            ):
                 # POST lost in the processor's own set-up (dkf2111: its MTRR sizing loops on
-                # a memory size still 0): again as an unknown processor
+                # a memory size still 0; code for that processor the emulator cannot run):
+                # again as an unknown processor
                 signature = None
             elif emu.stopped_reason == "reset":
                 cmos, cmos_hi = bytes(emu.cmos), bytes(emu.cmos_hi)
