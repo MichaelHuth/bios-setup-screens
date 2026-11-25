@@ -206,7 +206,9 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                 timer_irq=True,
             )
             retry.max_seconds = 400
-            retry.use_processor(signature)
+            # (no signature here: 2k1127s, 771lmr and 810et123 waited the whole 400 s with it,
+            # where without it the retry resets at once and the direct start follows)
+            retry.use_processor(None)
             # (400 s for all rounds: each one after an instruction limit would run another
             # 600 M instructions, and a board the retry does not help took 1270 s, s08-11)
             deadline = time.monotonic() + retry.max_seconds
