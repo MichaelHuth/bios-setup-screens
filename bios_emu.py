@@ -1425,6 +1425,9 @@ class BiosEmulator:
         self.keys = list(keys or [])
         self.cmos = bytearray(cmos or bytes(128))
         self.cmos_index = 0
+        # what was last written to port 70h (NMI bit included), read back there: Gigabyte's
+        # 6VTX/6VX7 AMI walks the CMOS down by "in al,70h / dec ax" and looped for ever
+        self.cmos_index_written = 0
         self.cmos_hi, self.cmos_hi_index = bytearray(128), 0  # upper 128 bytes (ports 72-75h)
         # VGA planar graphics (16-color modes): four 64 KB planes behind A0000-AFFFF, written
         # through the sequencer map mask and the graphics controller (write modes 0-3, latches)
@@ -4168,6 +4171,8 @@ class BiosEmulator:
             return self.port63
         if port == 0x82D:  # (bit 0 clear: Tyan i845 POST sets its clock and resets for ever)
             return 1
+        if port == 0x70 and size == 1:
+            return self.cmos_index_written
         if port == 0x71:
             if self.cmos_index == 0x0C:  # interrupt flags, cleared by reading
                 # the periodic flag (PF) and update-ended flag (UF) are set by time whether
@@ -4770,7 +4775,7 @@ class BiosEmulator:
                 self.ran_in_ram, self.flush_pending = False, True
                 uc.emu_stop()
         if port == 0x70:
-            self.cmos_index = value & 0x7F
+            self.cmos_index, self.cmos_index_written = value & 0x7F, value & 0xFF
         elif port in (0x3C4, 0x3CE):  # sequencer / graphics controller: index (and data)
             regs, which = (self.vga_seq, 0) if port == 0x3C4 else (self.vga_gc, 1)
             self.vga_index[which] = value & (7 if port == 0x3C4 else 15)
