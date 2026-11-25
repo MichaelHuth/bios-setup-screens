@@ -15,11 +15,35 @@ Worked out on a PCChips M572 BIOS (02/24/1999, Intel 430TX + PIIX4):
 from __future__ import annotations
 
 import time
+from typing import Any
+
+from unicorn import UC_HOOK_BLOCK
+from unicorn.x86_const import (
+    UC_X86_REG_EAX,
+    UC_X86_REG_EBP,
+    UC_X86_REG_EBX,
+    UC_X86_REG_ECX,
+    UC_X86_REG_EDI,
+    UC_X86_REG_EDX,
+    UC_X86_REG_ESI,
+    UC_X86_REG_ESP,
+)
 
 import ami
 import ami_setup
 import award_emu_setup
 import bios_emu
+
+SPIN_REGS = (
+    UC_X86_REG_EAX,
+    UC_X86_REG_EBX,
+    UC_X86_REG_ECX,
+    UC_X86_REG_EDX,
+    UC_X86_REG_ESI,
+    UC_X86_REG_EDI,
+    UC_X86_REG_EBP,
+    UC_X86_REG_ESP,
+)
 
 # (Aaeon SBC-570's says "HIFLEX SETUP UTILTY")
 # (Biostar MB-8500TUR, AMIBIOS 0622: "AMIBIOS SETUP - BIOS SETUP UTILITIES", the second part
@@ -51,6 +75,32 @@ def _modules(rom: bytes) -> list[dict]:
         return []
 
 
+def _spinning(emu: bios_emu.BiosEmulator) -> bool:
+    """POST stopped at its instruction limit in a loop that never ends: in a few thousand more
+    instructions a block starts again with the same registers (dkf2111's MTRR sizing, EAX
+    shifted to 0). A slow POST's waits (7ZXH at F000:04FEh, 011226s) count something and
+    go on as they are."""
+    if emu.stopped_reason != "instruction limit reached":
+        return False
+    seen: set[tuple[int, ...]] = set()
+    repeated = [False]
+
+    def block(uc: Any, address: int, _size: int, _user: object) -> None:
+        state = (address, *(uc.reg_read(r) for r in SPIN_REGS))
+        repeated[0] = repeated[0] or state in seen
+        seen.add(state)
+
+    hook = emu.uc.hook_add(UC_HOOK_BLOCK, block)
+    bios_emu._flush_tb(emu.uc)  # (code translated before the hook would not call it)
+    limit, emu.max_instructions = emu.max_instructions, 20_000
+    try:
+        emu.resume()
+    finally:
+        emu.max_instructions = limit
+        emu.uc.hook_del(hook)
+    return repeated[0]
+
+
 def is_hiflex(rom: bytes) -> bool:
     texts = rom + b"".join(m.get("data") or b"" for m in _modules(rom))
     return any(t in texts.upper() for t in TITLES)
@@ -79,10 +129,12 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
         # above its end (as on DIMMs of fewer rows), and POST waits for a device at I/O 5F00h
         # (unknown) to read 02h, ready; POST takes long
         m768 = b"$PCCHIPSM768VMR" in rom + hints
+        signature = ami.cpu_signature(modules)  # (a processor POST knows: see ami)
         for _ in range(5):  # some boards reset early in POST (Zida LX98: after setting the
             # CPU ratio in the CMOS): POST again with the CMOS they left. One that boots
             # without an error pause: again, with DEL tapped once POST offers it
             emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=100_000_000, hints=hints)
+            emu.use_processor(signature)
             if not emu.pci_devices:
                 raise ValueError(
                     f"this board's chipset is not emulated ({bios_emu.EMULATED}), "
@@ -94,7 +146,14 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
             if cmos_hi is not None:
                 emu.cmos_hi[:] = cmos_hi
             screen = emu.run(0xF000, 0xFFF0)
-            if emu.stopped_reason == "reset":
+            if signature is not None and (
+                emu.stopped_reason.startswith(("emulation error", "halted")) or _spinning(emu)
+            ):
+                # POST lost in the processor's own set-up (dkf2111: its MTRR sizing loops on
+                # a memory size still 0; code for that processor the emulator cannot run):
+                # again as an unknown processor
+                signature = None
+            elif emu.stopped_reason == "reset":
                 cmos, cmos_hi = bytes(emu.cmos), bytes(emu.cmos_hi)
             elif emu.stopped_reason.startswith("booting") and spoils < 2:
                 # the CMOS the reset left is valid: spoil its checksum, so that POST stops at
@@ -147,6 +206,9 @@ class AmiHiFlex(award_emu_setup.AwardEmu):
                 timer_irq=True,
             )
             retry.max_seconds = 400
+            # (no signature here: 2k1127s, 771lmr and 810et123 waited the whole 400 s with it,
+            # where without it the retry resets at once and the direct start follows)
+            retry.use_processor(None)
             # (400 s for all rounds: each one after an instruction limit would run another
             # 600 M instructions, and a board the retry does not help took 1270 s, s08-11)
             deadline = time.monotonic() + retry.max_seconds

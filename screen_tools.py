@@ -60,6 +60,7 @@ import mylex_setup
 import novell_setup
 import ncr_setup
 import prompt_setup
+import pulldown_setup
 import quadtel_setup
 import ami_qa_setup
 import uefi_setup
@@ -1640,9 +1641,11 @@ def _paired_halves(raw: bytes) -> bytes:
     blank blocks (DP511A: 128 KB of 256 KB, a mark left in the third block)."""
     if len(raw) >= 0x20000 and not len(raw) % 0x10000 and raw[-16] != 0xEA:
         for block in range(len(raw) // 0x10000 - 1, 0, -1):
+            if raw[block * 0x10000 - 16] != 0xEA:  # (before counting: 32 MB UEFI images)
+                continue
             tail = raw[block * 0x10000 :]
             common = collections.Counter(tail).most_common(1)[0][1]
-            if raw[block * 0x10000 - 16] == 0xEA and common >= 0.99 * len(tail):
+            if common >= 0.99 * len(tail):
                 raw = raw[: block * 0x10000]
                 break
     while (
@@ -1839,6 +1842,8 @@ def _setup_screens(
                 return _texas_micro_screens(path, raw, pages)
             if prompt_setup.family(raw) is not None:  # a prompt, a key and a screen
                 return _prompt_screens(path, raw, pages)
+            if pulldown_setup.is_pulldown(raw):  # a menu bar of pull-down lists (1998)
+                return _pulldown_screens(path, raw, pages)
             if tandon_setup.is_tandon(raw):  # Tandon's own SYSTEM SETUP (early 1990s)
                 return _tandon_screens(path, raw, pages)
             if chips_setup.is_chips_scat(raw):  # C&T's own BIOS for SCAT 286 boards
@@ -2035,6 +2040,23 @@ def _unsupported_family(raw: bytes) -> str:
             f"the BIOS of an expansion card ({kind}; an option ROM: 55 AA, no reset vector "
             "at its end), not a mainboard BIOS: it has no setup program of the kind "
             "rebuilt here"
+        )
+    if b"Dell System" in raw and len(raw) in (0x70000, 0x1F0000):  # (Dimension 4550,
+        # Precision 350/T5500, OptiPlex 780: DELLXBIOS, PLUS)
+        return (
+            f"a Dell BIOS without its boot block ({len(raw) // 1024} KB, the part its update "
+            "writes: the flash chip's top 64 KB, which starts the machine, stays on the "
+            "board and is not in this file, so the BIOS cannot be run here)"
+        )
+    if (  # (PS/2 Model 70 and 55SX: model byte F8h, Micro Channel)
+        raw[-16:-15] == b"\xea"
+        and raw[-2] == 0xF8
+        and b"IBM" in raw
+        and not re.search(rb"(?i)setup", raw)
+    ):
+        return (
+            "an IBM PS/2 BIOS (Micro Channel: its model byte is F8h), which has no setup "
+            "program in the ROM: those machines are configured with the Reference Diskette"
         )
     if (  # (IBM 5160, Sanyo SPC-400D, Ericsson Portable, Corona PPC-400, Amstrad PC1640)
         len(raw) <= 0x10000
@@ -2241,10 +2263,15 @@ class _Screens(list):
 
 def _with_post(bios: Any) -> _Screens:
     """bios.screens(), and the screen POST showed when it took its first key (DEL, F1 at
-    the error pause), where the emulator ran POST to get to setup."""
-    post = getattr(getattr(bios, "emu", None), "post_screen", None)
+    the error pause), where the emulator ran POST to get to setup. Where that is a setup page
+    (POST went into setup by itself), the last POST screen cleared before it."""
+    emu = getattr(bios, "emu", None)
+    post = getattr(emu, "post_screen", None)
     screens = _Screens(bios.screens())
-    if post is not None and all(post.text() != s.text() for _, s, _ in screens):
+    pages = {s.text() for _, s, _ in screens}
+    if post is None or post.text() in pages:
+        post = getattr(emu, "cleared_screen", None)
+    if post is not None and post.text() not in pages:
         screens.post = post
     return screens
 
@@ -2540,6 +2567,24 @@ def _prompt_screens(path: Path, rom: bytes, pages: str | None) -> dict:
     result["note"] = (
         "Values are what the setup showed for an empty CMOS. The PC is emulated: memory, "
         "drives and the display are what POST found in the emulator. Images are attached."
+    )
+    return result
+
+
+def _pulldown_screens(path: Path, rom: bytes, pages: str | None) -> dict:
+    screens = _cached_screens(rom, lambda: _with_post(pulldown_setup.PulldownSetup(rom)))
+    result = _mr_screens(path, rom, pages, screens)
+    result["bios"] = (
+        'A BIOS with a pull-down menu setup ("586 System BIOS 1998": General, Peripherals, '
+        "PnP/PCI, Hard Disk, Misc., Exit), captured by running the whole ROM in an x86 "
+        "emulator (POST stops at the CMOS error and F1 starts the setup; each tab's list "
+        "with Enter, the dialog of each entry marked ► with Enter)"
+    )
+    result["note"] = (
+        "Values are what the setup showed for an empty CMOS. The PC is emulated: CPU, "
+        "memory and drives are what POST found in the emulator. Where the image's reset "
+        "vector jumps into a block of zeros (a damaged dump), POST was started at F000:E05B. "
+        "Images are attached."
     )
     return result
 

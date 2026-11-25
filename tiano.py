@@ -12,6 +12,7 @@ from __future__ import annotations
 import struct
 
 BITBUFSIZ = 32
+OVERRUN = 64  # bytes read past the end of the data before it counts as damaged
 MAXMATCH = 256
 THRESHOLD = 3
 CODE_BIT = 16
@@ -46,7 +47,13 @@ class _Decoder:
                 self.subbitbuf = self.src[self.pos]
                 self.pos += 1
             else:
+                # zeros past the end (the 32-bit look-ahead reads 4 bytes there); far past
+                # it the stream is damaged: a header asking for 48 MB from 60 bytes decoded
+                # zero bits for 8 s
                 self.subbitbuf = 0
+                self.pos += 1
+                if self.pos > len(self.src) + OVERRUN:
+                    raise ValueError("the compressed data ends too early")
             self.bitcount = 8
         self.bitcount -= n
         self.bitbuf |= self.subbitbuf >> self.bitcount
@@ -175,7 +182,9 @@ class _Decoder:
             self._read_pt_len(NT, TBIT, 3)
             self._read_c_len()
             self._read_pt_len(MAXNP, self.pbit, -1)
-        self.block_size -= 1
+        # (16 bits as in EDK2: a block size of 0 lasts 65536 symbols, then the next header
+        # comes; as -1 it never ended, a damaged header decoding 48 MB for 8 s)
+        self.block_size = (self.block_size - 1) & 0xFFFF
         index = self.c_table[self.bitbuf >> (BITBUFSIZ - 12)]
         if index >= NC:
             mask = 1 << (BITBUFSIZ - 1 - 12)

@@ -61,8 +61,10 @@ class AmiEasySetup:
         if TITLE not in rom + hints:
             raise ValueError("not an AMIBIOS with the Easy Setup")
         cmos, cmos_hi = ami_setup.default_cmos(), None
+        signature = ami.cpu_signature(modules)  # (a processor POST knows: see ami)
         for _ in range(4):  # the boot block resets once to mark the CMOS (FCh = 3Dh, rc6103)
             emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=100_000_000, hints=hints)
+            emu.use_processor(signature)
             if not emu.pci_devices:
                 raise ValueError(
                     f"this board's chipset is not emulated ({bios_emu.EMULATED}), "
@@ -88,6 +90,7 @@ class AmiEasySetup:
             # a valid CMOS and no error pause (Fujitsu-Siemens Celsius 620, whose "Hit DEL"
             # message is switched off): DEL once POST shows its AMIBIOS line
             retry = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=100_000_000, hints=hints)
+            retry.use_processor(signature)
             if cmos_hi is not None:
                 retry.cmos_hi[:] = cmos_hi
             retry.press_keys(DEL * 3, when_text="AMIBIOS")

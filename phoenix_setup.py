@@ -346,12 +346,16 @@ class PhoenixTextSetup(PhoenixSetup):
     invalid and default values will be loaded ([Continue] with Enter). The rest is walked as
     in the later versions."""
 
-    def __init__(self, rom: bytes):
+    def __init__(self, rom: bytes, protect_e000: bool = False):
         if not is_phoenix_text_setup(rom):
             raise ValueError("not an early PhoenixBIOS 4.0 with the text-mode menu-bar setup")
         emu = bios_emu.BiosEmulator(
             rom, cmos=ami_setup.default_cmos(), max_instructions=300_000_000
         )
+        emu.protect_e000 = protect_e000
+        emu._protect()
+        if protect_e000:  # (the second POST, see below: ALR 9200's takes 50 s alone)
+            emu.max_seconds = 240
         # (with no chipset found the POST of a whole image may still get through: Anigma
         # P4D-420TX, Intel 420TX "Saturn", which the ROM addresses by device number only)
         if not emu.pci_devices and len(rom) <= 0x10000:
@@ -367,6 +371,8 @@ class PhoenixTextSetup(PhoenixSetup):
             emu = bios_emu.BiosEmulator(
                 rom, cmos=ami_setup.default_cmos(), max_instructions=300_000_000
             )
+            emu.protect_e000 = protect_e000
+            emu._protect()
             emu.kbc_reset_in_place = True
             emu.press_keys(F_KEYS[2], when_text="to enter SETUP")
             screen = emu.run(0xF000, 0xFFF0)
@@ -411,6 +417,13 @@ class PhoenixTextSetup(PhoenixSetup):
             self.states = {}
             return
         if not (_setup_heading(screen.text()) and selected_tab(screen)):
+            if not protect_e000 and not emu.pci_used and len(rom) >= 0x20000:
+                # (ALR 9200: no chipset modelled, POST used E0000-EFFFF as RAM, and its
+                # setup then looked there for a module of the ROM and ran into text): POST
+                # again with that half of the ROM kept as ROM
+                # pylint: disable-next=non-parent-init-called
+                self.__init__(rom, protect_e000=True)  # type: ignore[misc]
+                return
             hint = (
                 ""
                 if emu.pci_devices

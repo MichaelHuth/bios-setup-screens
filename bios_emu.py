@@ -111,6 +111,7 @@ DELAY_PORTS = frozenset((0xE0, 0xEB, 0xED))
 CMOS_POLLS = 2_000_000  # reads of one CMOS register in a row that stop a run (cmos_polls)
 BEEPS = 200  # beeps that stop a run: POST beeping its error for ever (AMI's error-beep loop)
 BEEP_READS = 1000  # port 61h reads (about 15 ms of refresh toggles) a beep lasts at least
+M7101_IDLE = 0x04  # the ALi M7101 SMBus host's status: idle (_m7101_write)
 MAX_SECONDS = 90  # wall-clock time of one run at most (a POST that loops through slow code)
 # bytes after a shadow RAM switch that the CPU still runs as it fetched them before (the 486's
 # prefetch queue): UMC BIOSes switch F0000 to the ROM from code there, read a word from the
@@ -182,9 +183,11 @@ STRAPS = {
 # SMM, which is how POST copies the SMM handler there): host ID -> register
 SMRAM_REGS = {
     **dict.fromkeys((0x1A30, 0x2560, 0x2570, 0x2578, 0x3340, 0x3580), 0x9D),
-    **dict.fromkeys((0x7180, 0x7190, 0x7192, 0x7120, 0x7122, 0x7124, 0x1130), 0x72),
+    **dict.fromkeys((0x7180, 0x7190, 0x7192, 0x7120, 0x7122, 0x7124), 0x72),
 }
-I810_HOSTS = (0x7120, 0x7122, 0x7124)
+# the 810's and 815's own SMRAM control at 70h (bits 3-2; s58mf2s1's POST writes C4h there to
+# copy its SMM code, and 72h is something else on the 815)
+I810_HOSTS = (0x7120, 0x7122, 0x7124, 0x1130)
 PC133_HOSTS = (0x1A30,)  # SDRAM boards whose DIMMs must be PC133 (845)
 SELF_CLEARING = {
     0x2560: {0x57: 0x02},
@@ -299,6 +302,11 @@ VIA_SOC_HOSTS = {0x8409: 0x0409, 0x8324: 0x0324}
 K7_SYSCFG = bytes.fromhex("66b9100001c0")
 # AMD Athlon north bridges (host ID -> its AGP bridge's ID) found beside VIA south bridges
 AMD_HOSTS = {0x7006: 0x7007, 0x700E: 0x700F}
+# the AMD-756's ISA, IDE and power management functions: its boards' AMD-751 host is addressed
+# by number (Gigabyte GA-7IXE; the south bridge modelled as a VIA 686, enough for POST)
+AMD756 = (0x7408, 0x7409, 0x740B)
+# ICH to ICH5 LPC bridges, whose GPIO block is at the base in 58h (_ich_gpio_base)
+ICH_GPIO_LPC = (0x2410, 0x2420, 0x2440, 0x244C, 0x2480, 0x248C, 0x24C0, 0x24CC, 0x24D0, 0x24DC)
 VIA_HOSTS = (
     0x0691,
     0x0693,
@@ -341,6 +349,9 @@ VIA_HOSTS = (
 # BARs not listed are not implemented and read 0.
 _IO16, _IO8 = 0xFFFFFFF1, 0xFFFFFFF9
 PCI_BARS = {
+    0x7101: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # (ALi M7101: ACPI 64 ports, SMBus 32)
+    0x1533: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # (the M7101's, where the model has the
+    0x1543: {0x10: 0xFFFFFFC1, 0x14: 0xFFFFFFE1},  # M1533/M1543 at 3.0: see m7101_key)
     0x7010: {0x20: _IO16},
     0x7111: {0x20: _IO16},
     0x2411: {0x20: _IO16},
@@ -548,8 +559,9 @@ def _via_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
     )
     agp = (0x1106, 0xB091)
     host_vendor = 0x1106
+    amd756 = any(_named(rom, 0x1022, i) for i in AMD756)
     for amd_host, amd_agp in AMD_HOSTS.items():  # an AMD north bridge beside a VIA south
-        if _named(rom, 0x1022, amd_host):
+        if _named(rom, 0x1022, amd_host) or (amd_host == 0x7006 and amd756):
             host_vendor, host, agp = 0x1022, amd_host, (0x1022, amd_agp)
             break
     dev = VIA_SOUTH[south]
@@ -743,6 +755,13 @@ def _named_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
         0x0482: 0x04A3,
         0x2440: 0x1A30,
     }
+    if not found.keys() & {(31, 0), (7, 0), (2, 0)} and _named(rom, 0x8086, 0x2449):
+        # only the ICH2's LAN function named (Acer's 815 boards address the ICH2 by number;
+        # without it their POST reads FFh as its PM base and resets through CF9h)
+        found[(31, 0)] = (0x2440, 0x060100)
+        if _named(rom, 0x8086, 0x1132):
+            found.setdefault((0, 0), (0x1130, 0x060000))
+            found.setdefault((1, 0), (0x1131, 0x060400))
     if found.get((31, 0), (0,))[0] in (0x2410, 0x2420) and _named(rom, 0x8086, 0x2440):
         # the ICH2 named beside the ICH/ICH0 (generic tables): the ICH2's board, and with the
         # 815's graphics (1132h) named an 815 host (Tiga T-815E)
@@ -766,7 +785,9 @@ def _named_devices(rom: bytes) -> dict[tuple[int, int], bytearray]:
             found.pop((0, 0), None)
         for key, value in ICH_FUNCTIONS.get(found[(31, 0)][0], {}).items():
             found.setdefault(key, value)
-    via_named = any(_named(rom, 0x1106, i) for i in VIA_SOUTH)
+    via_named = any(_named(rom, 0x1106, i) for i in VIA_SOUTH) or any(
+        _named(rom, 0x1022, i) for i in AMD756
+    )
     if (
         found.get((7, 1), (0,))[0] == 0x7111
         and (7, 0) not in found
@@ -831,6 +852,7 @@ KEYS = {
 # instructions with it to measure the CPU speed. The time passing is estimated from 486 cycle
 # counts of the instructions run, for a 33 MHz CPU.
 PIT_TICKS_PER_CYCLE = 1.193182 / 33
+PIT2_LATCH_CYCLES = 60  # (about two ticks: what channel 2 has counted at a latch at least)
 PREFIXES = {0x26, 0x2E, 0x36, 0x3E, 0x64, 0x65, 0x66, 0x67, 0xF0, 0xF2, 0xF3}
 
 
@@ -928,6 +950,15 @@ P4_SIGNATURE_HOSTS = (0x1A30,)
 # reset (Dell's PLUS 1.10 keeps DL from the reset in CMOS for its "Processor 0 ID")
 P4_SIGNATURE = 0xF27
 CPU_BRANDS[0x1A30] = "Intel(R) Pentium(R) 4 CPU 2.00GHz"
+# other makers' Pentium 4 host bridges (VIA P4X266, P4M266, P4X400, PT880, PM880; SiS 645 to
+# 661): their POST names the processor by its brand string, Unicorn's "Intel Core Processor"
+CPU_BRANDS.update(
+    dict.fromkeys(
+        (0x3128, 0x3148, 0x3168, 0x3258, 0x3259)  # (VIA)
+        + (0x0645, 0x0646, 0x0648, 0x0650, 0x0651, 0x0655, 0x0661),  # (SiS)
+        "Intel(R) Pentium(R) 4 CPU 2.00GHz",
+    )
+)
 KBC_REPLIES = (0xFA, 0xAA)  # acknowledge, self-test passed
 # An interrupt the emulator delivers is entered through a stub written for it into the BIOS
 # data area's inter-application communication area (0000:04F0-04FF, which no BIOS uses): the
@@ -945,6 +976,14 @@ RDMSR_RATIO_PATCH = bytes.fromhex("66B8") + (15 << 22).to_bytes(4, "little") + b
 # wanted, else written to MSR 2Dh and the board reset (Intel D845WR's POST; the emulated CPU
 # never reports the new ratio): the compare becomes "cmp al,al"
 P4_RATIO_CMP = bytes.fromhex("66B92C0000000F3266C1E81838D874")
+# "xor ecx,ecx / mov cl,2Ch / rdmsr / test eax,100000h / jne": AMI's variant, which takes bit 20
+# for a ratio it may not change (sp30221 resets until the ratio is the one its jumpers give):
+# the jne becomes a jmp
+P4_RATIO_FIXED = bytes.fromhex("6633C9B12C0F3266A90000100075")
+# "mov dx,0F000h / in ax,dx / or ax,20h": the boot block of AMI's 12/15/93 core on an Intel
+# board (s76bios) sets bit 5 of port F000h, the flash's address line A16, and jumps to the
+# reset vector: the two 64 KB halves of its 128 KB trade places at E0000/F0000 (_a16_switch)
+A16_SWITCH = bytes.fromhex("BA00F0ED0D2000")
 # "mov ecx,2Ch / rdmsr" (EBC_FREQUENCY_ID) where the emulator plays a Northwood
 # (cpu_p4_signature): "mov eax,10000000h / cdq", ratio 16 at a 100 MHz bus (code 0), a
 # 1.6 GHz Pentium 4 (Dell's PLUS 1.10 multiplies the two for its clock line: 0 MHz)
@@ -954,6 +993,19 @@ RDMSR_P4_PATCH = bytes.fromhex("66B8") + (16 << 24).to_bytes(4, "little") + byte
 # local APIC, ICR delivery mode SMI) to set a flag; there is no SMM here, the wait is left out
 SMI_CX_WAIT = bytes.fromhex("F7D1E304F7D1EBF8")  # (see the software SMI in _out)
 SMI_FLAG_WAIT = bytes.fromhex("26803E2F800175F8")
+# "push E000h / pop ds / call <sum> / or eax,eax": an AMI boot block's dword sum of its ROM,
+# run from its copy in RAM after POST code D6h; not 0, it goes to diskette recovery (6610: an
+# image changed after it was built). The copy's or becomes xor: the sum passes
+ROM_SUM_CHECK = re.compile(rb"\x68\x00\xe0\x1f\xe8[\x04\x05]\x00\x66\x0b\xc0")
+# PhoenixBIOS 4.0's CPU table search ("mov si,<table> / cmp si,<end> / jae / cmp cs:[si+2],al /
+# je found / add si,7 / jmp / mov ax,45h / jmp back"): the type code POST put in CMOS for the
+# emulated CPU (Unicorn's 306C4h) is in no entry, and neither is its fallback 45h, so it
+# searched for good (881032j, 881avio, Fujitsu FMV 2.03). In memory, once unpacked, the
+# fallback becomes "mov si,<table> / nop / nop": the first entry
+PHOENIX_CPU_SEARCH = re.compile(
+    rb"\xbe(..)\x81\xfe..\x73\x0b\x2e\x38\x44\x02\x74\x0a\x83\xc6\x07\xeb\xef\xb8\x45\x00\xeb\xe7",
+    re.S,
+)
 # "test byte es:[edi],1 (or 2) / je done / cmp dword es:[esi],0 / jne $-15": Dell's Phoenix 1.10
 # moves SMBASE through an SMI to itself and waits for the handler to clear a flag in SMRAM
 # (or for the APIC timer at FEE00390h to run out, which it takes for a failure): the je
@@ -1209,8 +1261,11 @@ class BiosEmulator:
         self.msr_patches = (
             (hints + rom).count(RDMSR_RATIO) > 0
             or P4_RATIO_CMP in hints + rom
+            or P4_RATIO_FIXED in hints + rom
             or SMI_FLAG_WAIT in hints + rom
         )
+        self.rom_sum_check = ROM_SUM_CHECK.search(rom) is not None  # (see _pass_rom_sum)
+        self.phoenix_rom = b"Phoenix" in rom  # (see _phoenix_cpu_search)
         self.post_codes_seen = set()  # memory is searched once per POST code, not per write
         # SMBus host controller (ICH/PIIX4 registers) with a DIMM's SPD EEPROM at address 50h
         self.smbus_base, self.smbus, self.smbus_busy = None, bytearray(16), 0
@@ -1222,10 +1277,19 @@ class BiosEmulator:
         # bit 5 of logical device 7's register F0h and waits until it reads clear.
         self.sio_index, self.sio_regs = {0x2E: 0, 0x4E: 0}, {}
         self.ite_monitor = 0  # an ITE environment controller's base (_ite_monitor_base)
+        self.ec_index: int | None = None  # the index written to ECh (_e000_rom)
         # I/O bases taken from configuration registers, looked up on every port access: kept
         # until a configuration write or the next slice (code here may set registers too)
         self.io_bases: dict[str, Any] = {}
         self.smbus_block_read = b""  # the bytes of a block read still to come
+        # the 32-byte block buffer (AUX_CTL, register 0Dh, bit 1: E32B) and the next byte's
+        # place in it: read from the block data register, the pointer reset by reading control
+        self.smbus_buffer, self.smbus_buffer_at = b"", 0
+        self.delay_loops: dict[bytes, bool] = {}  # delay port writes' code: in a bare loop?
+        self.ich_gpio = bytearray(b"\xff" * 0x40)  # the ICH GPIO registers (_ich_gpio_byte)
+        # the levels of its input pins, or None: the block not modelled (MSI's 815 boards tell
+        # their variants by the pins they drive themselves; the Acer route sets it)
+        self.ich_gpio_inputs: int | None = None
         # ICH power management I/O (PMBASE, LPC register 40h): registers read back, status
         # bits (e.g. TCO "intruder detected") are clear, the ACPI PM timer (+08h) runs
         self.pm_regs, self.pm_timer = bytearray(256), 0
@@ -1325,6 +1389,10 @@ class BiosEmulator:
         # cylinders, IRQ 6 after reset, recalibrate and seek (POST tests the controller)
         self.fdc_cmd, self.fdc_results, self.fdc_pcn = [], [], [0, 0, 0, 0]
         self.fdc_pending, self.fdc_dor, self.fdc_reset_sense, self.fdc_st0 = False, 0, 0, None
+        # no drive on the cable: recalibrate and seek end "not ready", the drive status shows
+        # neither ready nor track 0 (Novell's ATterminal offers its setup only at an error:
+        # "601-Diskette error")
+        self.fdc_no_drive = False
         self.fdc_waking = 0  # status reads after the reset that still find it not ready
         # a restart through the keyboard controller resets only the CPU (MR BIOS restarts POST
         # that way); otherwise it stops the run as "reset", for a new POST
@@ -1357,6 +1425,9 @@ class BiosEmulator:
         self.keys = list(keys or [])
         self.cmos = bytearray(cmos or bytes(128))
         self.cmos_index = 0
+        # what was last written to port 70h (NMI bit included), read back there: Gigabyte's
+        # 6VTX/6VX7 AMI walks the CMOS down by "in al,70h / dec ax" and looped for ever
+        self.cmos_index_written = 0
         self.cmos_hi, self.cmos_hi_index = bytearray(128), 0  # upper 128 bytes (ports 72-75h)
         # VGA planar graphics (16-color modes): four 64 KB planes behind A0000-AFFFF, written
         # through the sequencer map mask and the graphics controller (write modes 0-3, latches)
@@ -1482,6 +1553,7 @@ class BiosEmulator:
         self.hwmon_divisors = dict(HWMON_DIVISORS)
         self.hwmon_winbond: bool | None = None  # (not chosen yet: ITE's layout)
         self.hwmon_started = False  # 40h = 01h written (Winbond's start bit or an ITE limit)
+        self.hwmon_bank = 0  # Winbond's bank (4Eh bits 0-2): temperatures 2 and 3 at 50h/51h
         self.via_hwmon = bytearray(0x80)  # VT82C686A's monitor registers (see VIA_HWMON)
         for index, value in VIA_HWMON.items():
             self.via_hwmon[index] = value
@@ -1493,6 +1565,10 @@ class BiosEmulator:
         # ALi M1489 (486, configured through ports 22h/23h, unlocked with C5h in register
         # 03h before each access): found by that unlock, not in the ROM
         self.ali, self.ali_unlocked, self.ali_index = False, False, 0
+        # 13h <- C5h (ALi M6117's unlock): its registers read back as written, nothing else
+        # of the ALi model (a1320v15, w1380 and other M6117 boards: 15h written and read
+        # until its low bits are clear, for ever while locked)
+        self.m6117_unlocked = False
         self.neat = self.not_neat = False  # C&T NEAT shadow RAM on (see _ali_write)
         # UMC UM8498F behind 28h/2Ah, found by its unlock (see _um8498_out): 0 locked, 2 open
         self.um8498_phase, self.um8498_index, self.um8498_regs = 0, 0, bytearray(256)
@@ -1501,6 +1577,7 @@ class BiosEmulator:
         # the flash's other 128 KB (set by acer_setup), its bank register: _flash_bank
         self.flash_low, self.flash_upper = b"", True
         self.flash_sio_open, self.flash_sio_index = 0, 0
+        self.a16_switch = len(rom) == 0x20000 and A16_SWITCH in rom  # (see A16_SWITCH)
         self.scat_regs = bytearray(b"\xff" * 256)
         self.scat_regs[0x40], self.scat_regs[0x45], self.scat_regs[0x48] = 1, 0x37, 0xC0
         self.cr0_at_reset = 0  # (set by a driver whose POST checks it: chips_setup)
@@ -1508,9 +1585,14 @@ class BiosEmulator:
         # vector, took its first key (DEL, F1 at the error pause), as a person sees it
         self.from_reset = False
         self.post_screen: Screen | None = None
+        # the last screen with text before the first key, at a new POST code or before a clear
+        # (mode set, a full-screen scroll): what POST showed when it goes into setup by itself
+        # (AMI Hi-Flex boards that set up a new processor: no error pause, no key)
+        self.cleared_screen: Screen | None = None
         self.fill_solid_font = False  # see screen() (set by winbios_setup)
         self.mylex_counter = False  # port 800h counts bytes (set by mylex_setup)
         self.protect_socket = False  # see _protect (set by mr_setup)
+        self.protect_e000 = False  # see _protect (set by phoenix_setup)
         self.sis471 = False  # SiS 85C471 shadow RAM in register 52h (see _ali_write)
         self.below50 = False  # a register under 50h written behind 22h/23h (not a SiS 85C471)
         self.msr_patch_end = 0xFE000  # where _patch_msr_reads stops patching
@@ -1538,11 +1620,18 @@ class BiosEmulator:
         # VIA: a host bridge the ROM names has shadow RAM through 61h-63h (Intel's PAM
         # registers 59h-5Fh are DRAM settings there); beside an AMD host, and for AMI BIOSes
         # that name no chipset (which may be SiS boards, whose 61h-63h are DRAM settings),
-        # plain RAM. The SMBus where boot blocks expect it before they set it
+        # plain RAM. A VIA host inferred beside a VIA south bridge the ROM names has them too
+        # (626cc15, VT82C691 + 686: its DRAM sizing writes at F0000 went into the plain RAM,
+        # the boot block's ROM checksum failed and it beeped in its recovery). The SMBus
+        # where boot blocks expect it before they set it
         via_host = self.pci_devices.get((0, 0), b"")
-        self.via_shadow = via_host[0:2] == b"\x06\x11" and _named(
-            rom + hints, 0x1106, int.from_bytes(bytes(via_host[2:4]), "little")
+        host_named = _named(rom + hints, 0x1106, int.from_bytes(bytes(via_host[2:4]), "little"))
+        self.via_shadow_reset = (
+            via_host[0:2] == b"\x06\x11"
+            and not host_named
+            and any(_named(rom + hints, 0x1106, i) for i in VIA_SOUTH)
         )
+        self.via_shadow = via_host[0:2] == b"\x06\x11" and host_named or self.via_shadow_reset
         # VT82C686: its PM I/O where the chip leaves it (5000h) for BIOSes that never set it
         # (MSI MS-6316 reads 50CAh, wants 2020h clear, and its SMBus at +E0h)
         south = self.pci_devices.get((7, 0), b"")
@@ -1561,12 +1650,35 @@ class BiosEmulator:
         )
         self.chip_smbus = "sis" if sis else "ali" if ali else ""
         self.chip_smbus_end, self.chip_smbus_bar = False, bytearray(2)
+        # an ALi M7101 power management unit the ROM names (in a table of its devices) on a
+        # board modelled with another chipset (PCChips' ALi boards get the 440BX: M816LMR,
+        # M817LMR): at device 11h, its SMBus host in its own layout (_m7101_write)
+        self.m7101 = bytearray(8)
+        self.m7101[0] = M7101_IDLE
+        self.m7101_key = (17, 0)
+        if ali and int.from_bytes(chip_south[2:4], "little") in (0x1533, 0x1543):
+            # (an M1533/M1543 board modelled with the M1563's set: what its POST writes to
+            # device 3 is the M7101's, SMBus base at 14h - PCChips M751: 440h)
+            self.chip_smbus, self.m7101_key = "m7101", (3, 0)
+        named = rom + hints
+        if (
+            not self.chip_smbus
+            and not any(c[0:2] == b"\xb9\x10" for c in self.pci_devices.values())
+            and (17, 0) not in self.pci_devices
+            and _named(named, 0x10B9, 0x7101)
+            and _named(named, 0x10B9, 0x1533)
+        ):
+            self.pci_devices[(17, 0)] = _config(0x10B9, 0x7101, 0x068000)
+            self.chip_smbus = "m7101"
         self.sis_cleared_reads = -1  # reads since the SiS status was cleared (-1: not cleared)
         if self.chip_smbus:
             self.pam_valid = False  # (no Intel PAM: C0000-FFFFF plain RAM)
         if any(c[0:2] == b"\x06\x11" for c in self.pci_devices.values()):
             self.smbus_base = 0x400
-            self.pam_valid = False  # plain RAM; with a VIA host until the BIOS sets 61h-63h
+            # plain RAM; with a VIA host until the BIOS sets 61h-63h, but for the one inferred
+            # beside a VIA south bridge (via_shadow_reset) the ROM from the reset on: writes
+            # before then go nowhere (626cc15's DRAM sizing writes at F0000)
+            self.pam_valid = self.via_shadow_reset
             # (AMD Athlon boards shadow through the CPU's fixed-range MTRRs instead, GA-7ZXE)
         if self.via_shadow:
             self.pam_base = 0x100
@@ -1651,14 +1763,18 @@ class BiosEmulator:
         self.uc.hook_add(UC_HOOK_INSN, self._out, None, 1, 0, UC_X86_INS_OUT)
         self.cpu_brand = CPU_BRANDS.get(host_id)
         self.cpu_p4_signature = host_id in P4_SIGNATURE_HOSTS
+        # the processor signature in EDX after a reset, where a driver knows which processors
+        # the BIOS expects (AMI's cores of about 1995-2000 look it up in their own table: one
+        # they do not list is an unknown CPU, whose internal cache allows write-through only);
+        # CPUID 1 then answers it too (their Pentium II code checks the model it was told)
+        self.reset_edx: int | None = None
         # a BIOS that knows only AMD processors (Socket A: no "GenuineIntel" in it) gets an
         # Athlon; with Intel's vendor GA-7ZMMH's AMI found no CPU entry and jumped through an
         # index of FFh
         self.cpu_amd = b"AuthenticAMD" in rom + hints and b"GenuineIntel" not in rom + hints
         if self.cpu_amd:
             self.cpu_brand = "AMD Athlon(tm) Processor"
-        if self.cpu_brand is not None:
-            self.uc.hook_add(UC_HOOK_INSN, self._cpuid, None, 1, 0, UC_X86_INS_CPUID)
+        self.uc.hook_add(UC_HOOK_INSN, self._cpuid, None, 1, 0, UC_X86_INS_CPUID)
 
     # --- machine state --------------------------------------------------------------------
 
@@ -1743,6 +1859,9 @@ class BiosEmulator:
         body = code.lstrip(bytes(PREFIXES - {0xF2, 0xF3}))
         if body[:1] in (b"\xf2", b"\xf3") or (body[:1] and 0xA4 <= body[0] <= 0xAF):
             return
+        if len(body) >= 2 and body[0] not in (0xA0, 0xA1) and body[1] & 0xC7 != 0x06:
+            return  # (through a register, not the tick count's own address: a memory test
+            # running over the BIOS data area, Copam PC-501's cmp ax,es:[si])
         self.tick_reads += 1
         if self.tick_reads % 4 == 0:
             count = (struct.unpack("<I", uc.mem_read(0x46C, 4))[0] + 1) % 0x1800B0  # one day
@@ -2042,6 +2161,19 @@ class BiosEmulator:
                 self.uc.mem_write(SHADOW_BASE + at, self.rom_view[at : at + 0x4000])
         _flush_tb(self.uc)
 
+    def _a16_switch(self) -> None:
+        """Port F000h bit 5 set (A16_SWITCH, once): the ROM's lower 64 KB at F0000, its upper
+        64 KB, the boot block, at E0000. Without it the boot block jumps to its own reset
+        vector again and POST restarts for ever."""
+        self.a16_switch = False
+        view = self.rom_view
+        self.rom_view = view[:0x20000] + view[0x30000:] + view[0x20000:0x30000]
+        for block in range(8, 16):
+            if not self._reads_ram(block):
+                at = block * 0x4000
+                self.uc.mem_write(SHADOW_BASE + at, self.rom_view[at : at + 0x4000])
+        _flush_tb(self.uc)
+
     def _video_rom(self, hook_int10: bool = False) -> None:
         """A VGA card's ROM as POST finds it at C0000 (55AAh, 32 KB, checksum 0): its
         initialisation returns at once, as INT 10h is provided by the emulator; the fonts lie
@@ -2146,9 +2278,10 @@ class BiosEmulator:
             fallback = not self.pci_used and not (self.pam_gone and not self.shadow_used[b])
             # (F0000-FFFFF is the BIOS socket, not general shadow RAM: POST's memory test
             # must not overwrite the ROM on a chipset not modelled, MR BIOS m351, m356)
-            writable = (fallback and (b < 12 or not self.protect_socket)) or (
-                self._pam_bits(b) & 3 == 3
-            )
+            # (E0000-EFFFF likewise with protect_e000: ALR 9200's setup looks for its module
+            # in the ROM there after POST used that space as RAM, see phoenix_setup)
+            socket = self.protect_socket if b >= 12 else self.protect_e000 and b >= 8
+            writable = (fallback and not socket) or (self._pam_bits(b) & 3 == 3)
             if self.protected[b] == (not writable):
                 continue
             self.uc.mem_protect(
@@ -2230,7 +2363,7 @@ class BiosEmulator:
         if cfg is not None:
             device = int.from_bytes(bytes(cfg[2:4]), "little")
             straps, clearing = STRAPS.get(device, {}), SELF_CLEARING.get(device, {})
-            was47 = cfg[0x47]
+            was46, was47 = cfg[0x46], cfg[0x47]
             for i in range(size):  # IDs, class and header type are read-only
                 if reg + i < 0x100 and not (reg + i < 4 or 8 <= reg + i < 12 or reg + i == 0x0E):
                     byte = value >> (8 * i) & 0xFF
@@ -2284,6 +2417,19 @@ class BiosEmulator:
                 cfg[0x47] &= 0xFE
                 self.stopped_reason = "reset"
                 raise Stop()
+            if (
+                key == (1, 0)
+                and self.pci_devices[(0, 0)][2:4] == b"\x30\x07"
+                and reg <= 0x46 < reg + size
+                and cfg[0x46] & 0xC0 == 0xC0
+                and was46 & 0xC0 != 0xC0
+            ):
+                # SiS 730: device 1 (the LPC bridge on the board) register 46h, bits 6-7 set
+                # reset the machine (810-bios's AMI clears CMOS 0Eh, writes 31h there, then
+                # sets them again and again, waiting for the reset)
+                cfg[0x46] &= 0x3F
+                self.stopped_reason = "reset"
+                raise Stop()
             chip_bar = CHIP_SMBUS_BAR.get(key) if self.chip_smbus else None
             if chip_bar is not None and chip_bar <= reg + size - 1 and reg <= chip_bar + 1:
                 for i in range(size):
@@ -2300,6 +2446,13 @@ class BiosEmulator:
                 # VIA boards modelled with a 686 set it there (PCChips M768VMR: 5F00h)
                 base = int.from_bytes(bytes(cfg[0x80:0x82]), "little") & 0xFFF0
                 self.smbus_base = base or None
+            if (
+                key == self.m7101_key
+                and self.chip_smbus == "m7101"
+                and (reg <= 0xE0 < reg + size or reg <= 0x15 and 0x14 < reg + size)
+            ):  # the M7101's SMBus base (14h), on with E0h bit 0
+                base = int.from_bytes(bytes(cfg[0x14:0x16]), "little") & 0xFFF0
+                self.smbus_base = base if base and cfg[0xE0] & 1 else None
         if self.sis496 and (self.pci_addr & 0x80FFFF00) == 0x80002800:  # SiS 85C496 (0:5.0)
             if reg <= 0x45 and 0x44 < reg + size and cfg is not None:
                 self._sis496_shadow(cfg[0x44], cfg[0x45])
@@ -2433,10 +2586,19 @@ class BiosEmulator:
         cmd, self.fdc_cmd = self.fdc_cmd, []
         drive = cmd[1] & 3 if len(cmd) > 1 else 0
         if code == 0x04:  # sense drive status: ready, two sides, track 0
-            self.fdc_results = [0x28 | (0x10 if not self.fdc_pcn[drive] else 0) | drive]
+            self.fdc_results = [
+                (
+                    drive
+                    if self.fdc_no_drive
+                    else 0x28 | (0x10 if not self.fdc_pcn[drive] else 0) | drive
+                )
+            ]
         elif code in (0x07, 0x0F):  # recalibrate / seek: done, IRQ 6
             self.fdc_pcn[drive] = cmd[2] if code == 0x0F else 0
-            self.fdc_st0 = 0x20 | drive
+            self.fdc_st0 = (0x48 if self.fdc_no_drive else 0x20) | drive
+            # (the reset's "ready changed" results not yet sensed are gone: AMI's 1994 POST
+            # senses one after the reset, then reads C1h for its recalibrate and beeps)
+            self.fdc_reset_sense = 0
             self._fdc_irq()
         elif code == 0x08:  # sense interrupt status
             if self.fdc_reset_sense:  # after a reset: one per drive, "ready changed"
@@ -2523,8 +2685,11 @@ class BiosEmulator:
         if self.ali_index == 0x10 and value == 0xF8 and self.ali_alias_hook is None:
             self.ali_regs[0x10] = value  # (AMI's sizing probe: see _ali_low_alias)
             self._want_hook("ali_alias_hook")
-        # (the M6117's own unlock, 13h <- C5h, is not modelled: with it, AMI 0626 boards
-        # that work locked (IC08R15) end at the memory chain walk)
+        # (the M6117's own unlock, 13h <- C5h, is not modelled as the ALi model: with it, AMI
+        # 0626 boards that work locked (IC08R15) end at the memory chain walk; only reads
+        # back, m6117_unlocked)
+        if self.ali_index == 0x13:
+            self.m6117_unlocked = value == 0xC5
         if self.ali_index == 0x03:
             self.ali_unlocked = value == 0xC5
             if self.ali_unlocked and not self.ali:
@@ -3211,6 +3376,7 @@ class BiosEmulator:
         r, uc = self.uc.reg_read, self.uc
         if ah == 0x00:  # mode set: ROM font and palette, blinking on; AL bit 7 keeps the screen
             if not r(UC_X86_REG_AL) & 0x80:
+                self._note_cleared_screen()
                 self._clear_screen(0x07)
                 for plane in self.vga_planes:  # graphics memory too
                     plane[:] = bytes(len(plane))
@@ -3234,6 +3400,8 @@ class BiosEmulator:
             uc.reg_write(UC_X86_REG_DX, row << 8 | col)
             uc.reg_write(UC_X86_REG_CX, 0x0607)
         elif ah in (0x06, 0x07):
+            if r(UC_X86_REG_AL) == 0 and r(UC_X86_REG_CX) == 0 and r(UC_X86_REG_DH) >= ROWS - 1:
+                self._note_cleared_screen()  # (the whole screen cleared)
             self._scroll(
                 r(UC_X86_REG_AL),
                 r(UC_X86_REG_BH),
@@ -3490,6 +3658,8 @@ class BiosEmulator:
             base, size = space
             return port - base if base and 0 <= port - base < size else None
         if self.via_pm_base and 0 <= port - self.via_pm_base < 0x100:
+            if self.smbus_base is not None and 0 <= port - self.smbus_base < 16:
+                return None  # (the SMBus host the BIOS put there: s26r26's at 5000h)
             return port - self.via_pm_base
         return None
 
@@ -3639,6 +3809,14 @@ class BiosEmulator:
             # register with BYTE_DONE, INTR after the last one is taken
             count = eeprom[0] if 0 < eeprom[0] <= 32 else 8
             self.smbus[5], data = count, bytes(eeprom[1 : count + 1])
+            if self.smbus[0x0D] & 0x02:
+                # E32B: the whole block in the buffer at once, INTR (031008s's AMI reads
+                # its clock generator so and waits for INTR or an error)
+                self.smbus_buffer, self.smbus_buffer_at = data, 0
+                self.smbus_block_read, self.smbus_block_left = b"", -1
+                self.smbus[0] |= 0x02
+                self.smbus_result, self.smbus_idle = 0x02, 0
+                return
             self.smbus[7], self.smbus_block_read = data[0], data[1:]
             self.smbus_block_left = 0
             self.smbus[0] |= 0x80
@@ -3653,17 +3831,26 @@ class BiosEmulator:
                 # pylint: disable-next=attribute-defined-outside-init
                 self.smbus_next = (offset + 1) & 0xFF
             self.smbus[5], self.smbus[6] = self._device_word(address, eeprom, offset)
-        elif value >> 2 & 7 == 2 and address in self.smbus_devices:  # byte data written
+        elif value >> 2 & 7 in (2, 3) and address in self.smbus_devices:  # byte/word data
             self._device_store(address, offset, self.smbus[5])
-        if value >> 2 & 7 == 5 and not self.smbus[4] & 1 and self.smbus[5] > 1:
+            if value >> 2 & 7 == 3:  # (b8df12's boot block writes its clock generator's
+                # word 9Fh, waits for the reset and reads the word back: bit 2 set = done)
+                self._device_store(address, offset + 1 & 0xFF, self.smbus[6])
+        if (
+            value >> 2 & 7 == 5
+            and not self.smbus[4] & 1
+            and self.smbus[5] > 1
+            and not self.smbus[0x0D] & 0x02  # (E32B: sent from the buffer at once, INTR)
+        ):
             # a block written byte by byte: the first byte is out, the rest follow (above)
             self.smbus_block_left = self.smbus[5]  # (and one more BYTE_DONE: the count byte)
             self.smbus[0] |= 0x80
             self.smbus_result, self.smbus_idle = 0, 0
             return
         self.smbus_block_left = -1
+        block_written = value >> 2 & 7 == 5 and not self.smbus[4] & 1
         self.smbus[0] |= (
-            0x82 if value >> 2 & 7 == 5 and not self.smbus[4] & 1 else 0x02  # done (block
+            0x82 if block_written and not self.smbus[0x0D] & 0x02 else 0x02  # done (block
         )  # written: a byte too)
         self.smbus_result, self.smbus_idle = 0x02, 0
 
@@ -3709,6 +3896,32 @@ class BiosEmulator:
             self.io_bases["via_hwmon"] = base
         return port - base if base and 0 <= port - base < 0x80 else None
 
+    def _ich_gpio_base(self) -> int:
+        """The ICH-ICH5 GPIO I/O base (LPC bridge 58h, on with 5Ch bit 4), or 0 (also when
+        ich_gpio_inputs is None)."""
+        if self.ich_gpio_inputs is None:
+            return 0
+        if (base := self.io_bases.get("ich_gpio")) is None:
+            cfg, base = self.pci_devices.get((31, 0)), 0
+            if (
+                cfg is not None
+                and cfg[0:2] == b"\x86\x80"
+                and int.from_bytes(bytes(cfg[2:4]), "little") in ICH_GPIO_LPC
+                and cfg[0x5C] & 0x10
+            ):
+                base = int.from_bytes(bytes(cfg[0x58:0x5A]), "little") & 0xFFC0
+            self.io_bases["ich_gpio"] = base
+        return base
+
+    def _ich_gpio_byte(self, off: int) -> int:
+        """A GPIO register byte: as written (FFh before), but the level registers (0Ch-0Fh,
+        GP_LVL) give ich_gpio_inputs for the pins GP_IO_SEL (04h-07h) makes inputs."""
+        if 0x0C <= off < 0x10:
+            inputs = self.ich_gpio[off - 8]
+            level = (self.ich_gpio_inputs or 0) >> (8 * (off - 0x0C)) & 0xFF
+            return (self.ich_gpio[off] & ~inputs | level & inputs) & 0xFF
+        return self.ich_gpio[off]
+
     def _via_pm_base(self) -> int:
         """The VIA south bridge's power management I/O base: the VT82C686's (function 4,
         register 48h) or the VT82C596's (function 3; AMI's VT693 boot block sets it there
@@ -3737,6 +3950,31 @@ class BiosEmulator:
             | (port & 0xFC)
         )
 
+    def _m7101_write(self, off: int, value: int) -> None:
+        """The ALi M7101's SMBus host (Linux i2c-ali15x3): 0 status (written ones clear: idle
+        04h, busy 08h, done 10h, device error 20h), 1 control (protocol in bits 4-6: 1 byte,
+        2 byte data, 3 word), 2 start (any write), 3 slave address (bit 0: read), 4/5 data,
+        7 command. Answered from the SPD EEPROMs and the other SMBus devices."""
+        regs = self.m7101
+        if off == 0:
+            regs[0] = regs[0] & ~value & 0xFF | M7101_IDLE
+            return
+        if off != 2:
+            regs[off] = value & 0xFF
+            return
+        address, protocol = regs[3] >> 1, regs[1] >> 4 & 7
+        device = self.spd.get(address, self.smbus_devices.get(address))
+        if device is None:
+            regs[0] = M7101_IDLE | 0x20
+            return
+        if regs[3] & 1:
+            regs[4], regs[5] = self._device_word(address, device, regs[7])
+        elif address in self.smbus_devices and protocol in (2, 3):
+            self._device_store(address, regs[7], regs[4])
+            if protocol == 3:
+                self._device_store(address, regs[7] + 1 & 0xFF, regs[5])
+        regs[0] = M7101_IDLE | 0x10
+
     def _chip_smbus_read(self, off: int) -> int | None:
         """A read of a SiS 96x / ALi M1563 SMBus register, or None for the host model's own.
         The end of a transaction the BIOS cleared before it looked comes again when polled (a
@@ -3745,6 +3983,8 @@ class BiosEmulator:
         it on others). After the BIOS clears the status register (FFh), the first read gives
         the old answer and the next ones bit 7 as well, until a new transaction starts: MSI
         6567's POST clears it and then polls for bit 7, ASUS's SiS 645 boards read it once."""
+        if self.chip_smbus == "m7101":
+            return self.m7101[off] if off < 8 else 0xFF
         sis = self.chip_smbus == "sis"
         if sis and off != 0:
             src = SIS_SMBUS_READ.get(off)
@@ -3766,6 +4006,10 @@ class BiosEmulator:
     def _chip_smbus_write(self, off: int, value: int) -> bool:
         """A write to a SiS 96x / ALi M1563 SMBus register: True when handled here (SiS),
         False for the host model (ALi: the VIA layout, with the end owed after a start)."""
+        if self.chip_smbus == "m7101":
+            if off < 8:
+                self._m7101_write(off, value)
+            return True
         if self.chip_smbus != "sis":
             if off == 2 and value & 0x40 or off == 7:  # a start, a block byte
                 self.chip_smbus_end = True
@@ -3806,6 +4050,43 @@ class BiosEmulator:
             if self.port61 & 1:  # timer 2 gate open: its output (bit 5) changes as it runs
                 self.port61 ^= 0x20
             return self.port61
+        if port == 0x40:  # (the timer's counters next: wait loops read them)
+            if self.pit0_latch is None:  # not latched: read the running counter
+                self.pit0_count = (self.pit0_count - 0x25) & 0xFFFF
+                counter = self.pit0_count
+            else:
+                counter = self.pit0_latch
+            if self.pit0_access in (1, 2):  # one byte only (Quadtel 3.05 tests each channel
+                self.pit0_latch = None  # by reading its high byte until the counter wraps)
+                return counter & 0xFF if self.pit0_access == 1 else counter >> 8
+            self.pit0_read_high = not self.pit0_read_high
+            if not self.pit0_read_high:
+                self.pit0_latch = None
+                return counter >> 8
+            return counter & 0xFF
+        if port == 0x41:
+            if self.pit1_latch is None:
+                self._pit1_step()
+            counter = self.pit1_count if self.pit1_latch is None else self.pit1_latch
+            if self.pit1_access == 2:
+                self.pit1_latch = None
+                return counter >> 8
+            if self.pit1_access == 3:
+                self.pit1_read_high = not self.pit1_read_high
+                if self.pit1_read_high:
+                    return counter & 0xFF
+            self.pit1_latch = None
+            return counter >> 8 if self.pit1_access == 3 else counter & 0xFF
+        if port == 0x42:
+            self._pit_used()
+            counter = self._pit_value() if self.pit2_latch is None else self.pit2_latch
+            if self.pit2_access in (1, 2):
+                self.pit2_latch = None
+                return counter & 0xFF if self.pit2_access == 1 else counter >> 8
+            self.pit_read_high = not self.pit_read_high
+            if not self.pit_read_high:
+                self.pit2_latch = None
+            return counter >> 8 if not self.pit_read_high else counter & 0xFF
         # HP's AMIBIOS 7 boards (BCM IN845 Rev 1.14) read a hardware-monitor data port
         # and take all ones for a stopped CPU fan, then halt; 00 is "no reading yet"
         if port == 0x0A59:
@@ -3857,6 +4138,8 @@ class BiosEmulator:
                 self.hwmon_winbond = True
             layout = HWMON_WINBOND if self.hwmon_winbond else HWMON_ITE
             value = HWMON_VOLTAGES.get(index, layout.get(index))
+            if self.hwmon_winbond and self.hwmon_bank in (1, 2) and index in (0x50, 0x51):
+                value = 0x20 if index == 0x50 else 0x00  # temperatures 2 and 3: 32.0 C
             if value is not None:
                 return value
             if index in self.hwmon_divisors:
@@ -3876,7 +4159,7 @@ class BiosEmulator:
             if self.ali_index > 0x4F and self.ali_index != 1:
                 return 0xFF
             return self.scat_regs[self.ali_index] & (0x3F if self.ali_index == 0x45 else 0xFF)
-        if port == 0x23 and (self.ali_unlocked or self.sis471):
+        if port == 0x23 and (self.ali_unlocked or self.sis471 or self.m6117_unlocked):
             return self.ali_regs[self.ali_index]  # (SiS 85C471: read back as written)
         if port == 0x24 and self.opti_wrote:
             index = self.ali_index
@@ -3888,6 +4171,8 @@ class BiosEmulator:
             return self.port63
         if port == 0x82D:  # (bit 0 clear: Tyan i845 POST sets its clock and resets for ever)
             return 1
+        if port == 0x70 and size == 1:
+            return self.cmos_index_written
         if port == 0x71:
             if self.cmos_index == 0x0C:  # interrupt flags, cleared by reading
                 # the periodic flag (PF) and update-ended flag (UF) are set by time whether
@@ -3995,43 +4280,6 @@ class BiosEmulator:
             return value
         if port == 0x60:  # read again: the output buffer still holds the last byte
             return self.kbc_last
-        if port == 0x40:
-            if self.pit0_latch is None:  # not latched: read the running counter
-                self.pit0_count = (self.pit0_count - 0x25) & 0xFFFF
-                value = self.pit0_count
-            else:
-                value = self.pit0_latch
-            if self.pit0_access in (1, 2):  # one byte only (Quadtel 3.05 tests each channel
-                self.pit0_latch = None  # by reading its high byte until the count wraps)
-                return value & 0xFF if self.pit0_access == 1 else value >> 8
-            self.pit0_read_high = not self.pit0_read_high
-            if not self.pit0_read_high:
-                self.pit0_latch = None
-                return value >> 8
-            return value & 0xFF
-        if port == 0x41:
-            if self.pit1_latch is None:
-                self._pit1_step()
-            value = self.pit1_count if self.pit1_latch is None else self.pit1_latch
-            if self.pit1_access == 2:
-                self.pit1_latch = None
-                return value >> 8
-            if self.pit1_access == 3:
-                self.pit1_read_high = not self.pit1_read_high
-                if self.pit1_read_high:
-                    return value & 0xFF
-            self.pit1_latch = None
-            return value >> 8 if self.pit1_access == 3 else value & 0xFF
-        if port == 0x42:
-            self._pit_used()
-            value = self._pit_value() if self.pit2_latch is None else self.pit2_latch
-            if self.pit2_access in (1, 2):
-                self.pit2_latch = None
-                return value & 0xFF if self.pit2_access == 1 else value >> 8
-            self.pit_read_high = not self.pit_read_high
-            if not self.pit_read_high:
-                self.pit2_latch = None
-            return value >> 8 if not self.pit_read_high else value & 0xFF
         if port == 0x92:
             return 2 if self.a20_fast else 0
         if self.smbus_base is not None and 0 <= port - self.smbus_base < 16:
@@ -4060,7 +4308,12 @@ class BiosEmulator:
                     self.smbus[0] |= self.smbus_result
                     self.smbus_result = 0
             if port - self.smbus_base == 2:  # control: START (bit 6) is write-only, reads 0
-                return self.smbus[2] & ~0x40  # (w1641v11's AMI waits for it to clear)
+                self.smbus_buffer_at = 0  # (w1641v11's AMI waits for it to clear)
+                return self.smbus[2] & ~0x40
+            if port - self.smbus_base == 7 and self.smbus[0x0D] & 0x02 and self.smbus_buffer:
+                at = self.smbus_buffer_at
+                self.smbus_buffer_at = (at + 1) % 32
+                return self.smbus_buffer[at] if at < len(self.smbus_buffer) else 0
             return self.smbus[port - self.smbus_base]
         if 0x481 <= port <= 0x48F or (
             self.dma_pages_ext and (0x401 <= port <= 0x40F or 0x4C1 <= port <= 0x4CF)
@@ -4085,6 +4338,10 @@ class BiosEmulator:
             return regs[index & 0x1F]
         if port in (0x3B4, 0x3D4):
             return self.crtc[port][0]
+        if (base := self._ich_gpio_base()) and 0 <= (off := port - base) < 0x40:
+            n = min(size, 0x40 - off)
+            data = bytes(self._ich_gpio_byte(off + i) for i in range(n)) + b"\xff" * (size - n)
+            return int.from_bytes(data, "little")
         if (base := self._via_pm_base()) and 0x48 <= port - base < 0x4C:
             # VIA general purpose inputs (PM I/O 48h-4Bh) low: AMI on the VT693 board
             # CBVC105E reads 4Ah bit 5 high as "set the clock generator", does so, resets
@@ -4097,6 +4354,13 @@ class BiosEmulator:
         if port == 0x860:  # SiS 961/962 ACPI (base 800h) + 60h: AMI Hi-Flex on SiS K7 boards
             return 0  # sets bit 0 at 862h and waits for this to read 0 (PCChips M841, Matsonic
             # MS8318E, run as the VIA model since a VIA ID is in their ROMs)
+        if (
+            port & 0x7F == 0x60
+            and (lpc := self.pci_devices.get((1, 0))) is not None
+            and self.pci_devices[(0, 0)][2:4] == b"\x30\x07"
+            and port - 0x60 == int.from_bytes(bytes(lpc[0x74:0x76]), "little") & ~0x7F
+        ):
+            return 0  # the same on the SiS 730, its ACPI base in device 1's 74h (810-bios)
         # display enable / vertical retrace toggle as the screen is drawn (3BAh in monochrome
         # modes: pci450-a's video BIOS waits for it there)
         if port in (0x3DA, 0x3BA):
@@ -4116,15 +4380,35 @@ class BiosEmulator:
             return port, None, index
         return port, self.sio_regs.get((port, None, 0x07), 0), index
 
+    def _e000_rom(self, value: int) -> None:
+        """Register 11h through ECh/EDh (the chipset of the 1998 Award 3.20 images fts...d824
+        and fts...d4hvl: AAh, then a far jump into E000 to go on there while it copies
+        E000 to F000): two bits for each 16 KB of E0000-EFFFF, 10b shows the ROM's top
+        64 KB, the BIOS's own segment, there as well."""
+        blocks = [block for block in range(4) if value >> 2 * block & 3 == 2]
+        if not blocks:  # (other boards' 11h: F5h, F0h - jet-fm27c512)
+            return
+        top = bytes(self.uc.mem_read(0x100000000 - 0x10000, 0x10000))
+        for block in blocks:
+            part = top[block * 0x4000 : (block + 1) * 0x4000]
+            self.uc.mem_write(0xE0000 + block * 0x4000, part)
+        _flush_tb(self.uc)
+
     def _ite_monitor_base(self, config: int) -> None:
         """The base of an ITE environment controller (logical device 4: 60h-61h, on with 30h
         bit 0) as set through the config port: its address and data ports (base + 5 and 6) are
         the monitor's, as 295h/296h. Only bases from 400h on (PCChips' ITE boards: 800h; a
-        serial port is logical device 4 of other Super I/O chips)."""
+        serial port is logical device 4 of other Super I/O chips). A Winbond's hardware monitor
+        is its logical device 0Bh the same way (s147r13: 530h), in Winbond's layout."""
         regs = self.sio_regs
-        base = regs.get((config, 4, 0x60), 0) << 8 | regs.get((config, 4, 0x61), 0)
-        on = regs.get((config, 4, 0x30), 0) & 1
-        self.ite_monitor = base & 0xFFF8 if on and base >= 0x400 else 0
+        self.ite_monitor = 0
+        for ldn in (4, 0x0B):
+            base = regs.get((config, ldn, 0x60), 0) << 8 | regs.get((config, ldn, 0x61), 0)
+            if regs.get((config, ldn, 0x30), 0) & 1 and base >= 0x400:
+                self.ite_monitor = base & 0xFFF8
+                if ldn == 0x0B and self.hwmon_winbond is None:
+                    self.hwmon_winbond = True
+                return
 
     def _div_overflow(self, uc: Uc) -> bool:
         """A 32-bit DIV whose quotient does not fit: BIOSes measure the CPU clock with RDTSC
@@ -4249,8 +4533,38 @@ class BiosEmulator:
 
     def _cpuid(self, uc: Uc, _user: object) -> int:
         """The processor's name (CPUID 80000002h-80000004h) and extended features (80000001h)
-        as on the board's own CPUs; the emulated CPU answers everything else."""
+        as on the board's own CPUs, and the signature (CPUID 1) a driver chose (reset_edx); the
+        emulated CPU answers everything else."""
         leaf = uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF
+        if leaf == 1 and self.reset_edx is not None:
+            family = self.reset_edx >> 8 & 0x0F
+            # (features of that time: FPU ... CMOV and MMX from the Pentium II on, the
+            # Pentium's base set, a 486's FPU; an Athlon's)
+            features = (
+                0x0183F9FF
+                if self.cpu_amd
+                else 0x0080FBFF if family >= 6 else 0x000001BF if family == 5 else 0x00000001
+            )
+            for reg, value in zip(
+                (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX),
+                (self.reset_edx, 0, 0, features),
+            ):
+                uc.reg_write(reg, value)
+            return 1
+        if (
+            leaf >= 0x80000000
+            and self.reset_edx is not None
+            and not self.cpu_amd
+            and self.reset_edx >> 8 & 0x0F <= 6
+        ):
+            # an Intel processor up to the Pentium III has no extended leaves, so no brand
+            # string: the BIOS names it from its own table (not Unicorn's "Intel Core
+            # Processor")
+            for reg in (UC_X86_REG_EAX, UC_X86_REG_EBX, UC_X86_REG_ECX, UC_X86_REG_EDX):
+                uc.reg_write(reg, 0)
+            return 1
+        if self.cpu_brand is None:
+            return 0
         if self.cpu_p4_signature and leaf == 2 and not self.cpu_amd:
             # the Northwood's cache descriptors: 512 KB L2 (7Bh), 12K-uop trace cache
             # (70h), no L3 (40h), 8 KB L1 data (66h), TLBs (5Bh, 50h)
@@ -4324,6 +4638,7 @@ class BiosEmulator:
                 at = memory.find(RDMSR_P4, at + 1)
         for pattern, offset, replacement in (
             (P4_RATIO_CMP, 12, b"\x38\xc0"),
+            (P4_RATIO_FIXED, 13, b"\xeb"),
             (SMI_FLAG_WAIT, 6, b"\x90\x90"),
         ):
             at = memory.find(pattern)
@@ -4335,11 +4650,56 @@ class BiosEmulator:
             _flush_tb(self.uc)
         return patched
 
+    def _pass_rom_sum(self) -> None:
+        """ROM_SUM_CHECK in the boot block's copy in conventional memory: made to pass (the
+        ROM itself is left as it is, later checks of it see it unchanged)."""
+        memory = bytes(self.uc.mem_read(0, 0xA0000))
+        for m in ROM_SUM_CHECK.finditer(memory):
+            self.uc.mem_write(m.end() - 2, b"\x33")  # xor eax,eax
+        _flush_tb(self.uc)
+
+    def _phoenix_cpu_search(self) -> None:
+        """PHOENIX_CPU_SEARCH below 1 MB: its fallback takes the table's first entry."""
+        memory = bytes(self.uc.mem_read(0, 0x100000))
+        patched = False
+        for m in PHOENIX_CPU_SEARCH.finditer(memory):
+            self.uc.mem_write(m.end() - 5, b"\xbe" + m.group(1) + b"\x90\x90")
+            patched = True
+        if patched:
+            _flush_tb(self.uc)
+
+    def _end_delay_loop(self, uc: Uc) -> None:
+        """A loop of nothing but a delay port write (out to it, jmp $+2s, loop back: Gigabyte
+        GA-6VXD7's AMI waits 4096 of them, again and again) ends after this pass: CX = 1."""
+        if uc.reg_read(UC_X86_REG_CR0) & 1:
+            return
+        code = bytes(uc.mem_read(self._code_address(), 12))
+        loop = self.delay_loops.get(code)
+        if loop is None:
+            at = 2 if code[0] == 0xE6 else 1  # (out imm8, al or out dx, al)
+            while code[at : at + 2] == b"\xeb\x00" and at < 8:
+                at += 2
+            loop = code[at] == 0xE2 and at + 2 + struct.unpack("b", code[at + 1 : at + 2])[0] <= 0
+            # (at most 9 + 2 bytes: four jmp $+2 after out dx, al, then the loop)
+            self.delay_loops[code] = loop
+        if loop and uc.reg_read(UC_X86_REG_CX) > 1:
+            uc.reg_write(UC_X86_REG_CX, 1)
+
     def _out(self, uc: Uc, port: int, size: int, value: int, _user: object) -> None:
+        if port == 0xEC and size == 1:
+            self.ec_index = value & 0xFF
+            return
+        if port == 0xED and self.ec_index == 0x11:
+            self.ec_index = None
+            self._e000_rom(value & 0xFF)
+            return
         if port in DELAY_PORTS:  # (nothing there: delays, millions in a row)
+            self._end_delay_loop(uc)
             return
         if self.flash_low and port in (0x3F0, 0x3F1):
             self._flash_bank(port, value & 0xFF)
+        if self.a16_switch and port == 0xF000 and value & 0x20:
+            self._a16_switch()
         if (
             self.chip_smbus
             and self.smbus_base is not None
@@ -4353,7 +4713,7 @@ class BiosEmulator:
         if port in (0x2F, 0x4F) and size == 1:
             key = self._sio_key(port - 1)
             self.sio_regs[key] = value & 0xFF
-            if key[1:] in ((4, 0x30), (4, 0x60), (4, 0x61)):
+            if key[1] in (4, 0x0B) and key[2] in (0x30, 0x60, 0x61):
                 self._ite_monitor_base(port - 1)
             return
         if port == 0xCF8 and size == 1:  # mechanism #2 (see _in)
@@ -4371,6 +4731,8 @@ class BiosEmulator:
                 self.hwmon_winbond = value & 0x7F in HWMON_WINBOND_ONLY
         if port == 0x296 and size == 1 and self.hwmon_index & 0x7F in self.hwmon_divisors:
             self.hwmon_divisors[self.hwmon_index & 0x7F] = value & 0xFF
+        if port == 0x296 and self.hwmon_index & 0x7F == 0x4E:  # Winbond's bank select
+            self.hwmon_bank = value & 0x07
         if (
             port == 0x296
             and self.hwmon_winbond is None
@@ -4396,6 +4758,11 @@ class BiosEmulator:
             self.post_codes_seen.add(value & 0xFF)  # a new POST step: modules may be unpacked
             if self.msr_patches:
                 self._patch_msr_reads()
+            if value & 0xFF == 0xD6 and self.rom_sum_check:
+                self._pass_rom_sum()
+            if self.phoenix_rom:
+                self._phoenix_cpu_search()
+            self._note_cleared_screen()  # (what POST shows at each of its steps)
             # POST back in the ROM after a part that ran in RAM: the code translated so far
             # is dropped (outside the run; inside a hook it spoilt Unicorn's hook list).
             # Unicorn crashed (access violation) when a REP STOSD cleared memory holding
@@ -4408,7 +4775,7 @@ class BiosEmulator:
                 self.ran_in_ram, self.flush_pending = False, True
                 uc.emu_stop()
         if port == 0x70:
-            self.cmos_index = value & 0x7F
+            self.cmos_index, self.cmos_index_written = value & 0x7F, value & 0xFF
         elif port in (0x3C4, 0x3CE):  # sequencer / graphics controller: index (and data)
             regs, which = (self.vga_seq, 0) if port == 0x3C4 else (self.vga_gc, 1)
             self.vga_index[which] = value & (7 if port == 0x3C4 else 15)
@@ -4670,6 +5037,9 @@ class BiosEmulator:
             self.pit1_count = self.pit1_reload
         elif port == 0x43 and value >> 6 == 2 and not value & 0x30:  # latch channel 2
             self._pit_used()
+            if self.pit_active:  # (counting: a few ticks on at least, as the code to here
+                # took that long; Copam PC-501's timer test latches right after the count)
+                self.pit_cycles = max(self.pit_cycles, PIT2_LATCH_CYCLES)
             self.pit2_latch, self.pit_read_high = self._pit_value(), False
         elif port == 0x43 and value >> 6 == 2:  # channel 2 mode: a new count follows
             self.pit_read_high = self.pit_write_high = False
@@ -4688,6 +5058,9 @@ class BiosEmulator:
             else:
                 self.pit_reload = value & 0xFF
             self.pit_write_high = not self.pit_write_high
+        elif (base := self._ich_gpio_base()) and 0 <= (off := port - base) < 0x40:
+            for i in range(min(size, 0x40 - off)):
+                self.ich_gpio[off + i] = value >> 8 * i & 0xFF
 
     def _kbc_command(self, cmd: int) -> None:
         """8042 keyboard controller commands (port 64h) as POST uses them."""
@@ -4810,7 +5183,21 @@ class BiosEmulator:
 
     # --- run --------------------------------------------------------------------------------
 
+    def use_processor(self, chosen: tuple[int, bool] | None) -> None:
+        """The processor a driver chose from the BIOS's own table (ami.cpu_signature): its
+        signature in EDX at reset and in CPUID 1; an AMD one where the BIOS lists no Intel
+        processor (an Athlon then, as for a BIOS without Intel's vendor string). A board that
+        takes only a Pentium 4 keeps its Northwood (cpu_p4_signature)."""
+        if chosen is None or self.cpu_p4_signature:
+            self.reset_edx = None
+            return
+        self.reset_edx, amd = chosen
+        if amd and not self.cpu_amd:
+            self.cpu_amd, self.cpu_brand = True, "AMD Athlon(tm) Processor"
+
     def _reset_signature(self) -> int:
+        if self.reset_edx is not None:
+            return self.reset_edx
         return P4_SIGNATURE if self.cpu_p4_signature and not self.cpu_amd else 0x0435
 
     def run(
@@ -4820,6 +5207,8 @@ class BiosEmulator:
         self.from_reset = (cs, ip) == (0xF000, 0xFFF0)
         if self.from_reset and self.cpu_p4_signature and not self.cpu_amd:
             uc.reg_write(UC_X86_REG_EDX, P4_SIGNATURE)  # (as after power-on)
+        if self.from_reset and self.reset_edx is not None:
+            uc.reg_write(UC_X86_REG_EDX, self.reset_edx)
         if self.from_reset:
             if self.cr0_at_reset:
                 uc.reg_write(UC_X86_REG_CR0, self.cr0_at_reset)
@@ -5118,7 +5507,9 @@ class BiosEmulator:
                 # and the next tick is a whole tick later, not at once)
                 self.irq0_pending, self.refresh_toggles = False, 0
             elif vector == 0x0E:
-                self.fdc_pending = False
+                # (its interrupt after a reset: the controller is ready; tvd0509b's AMI looks
+                # at the status once then, and called it a controller failure for ever)
+                self.fdc_pending, self.fdc_waking = False, 0
             else:
                 self.rtc_pending, self.rtc_flags = False, 0xC0  # IRQF + periodic flag
             if not (self.irq0_pending or self.rtc_pending or self.fdc_pending):
@@ -5324,6 +5715,12 @@ class BiosEmulator:
                 break
         for r, v in saved.items():
             uc.reg_write(r, v)
+
+    def _note_cleared_screen(self) -> None:
+        if self.from_reset and self.post_screen is None and self.video_mode not in PLANAR_MODES:
+            screen = self.screen()
+            if screen.text().strip():
+                self.cleared_screen = screen
 
     def _note_post_screen(self) -> None:
         """Keep the screen as the POST screen, if this is the first key POST takes."""

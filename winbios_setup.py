@@ -47,6 +47,7 @@ SCANCODES = {
     "pgup": [0xE0, 0x49, 0xE0, 0xC9],
 }
 DEL_KEY = [0x53, 0xD3]
+HOST_430FX = 0x122D  # (the host bridge tried when none is found: see WinBios)
 SPACE_KEY = [0x39, 0xB9]  # (TriGem: "Hit SPACE if you want to run SETUP")
 
 
@@ -70,21 +71,36 @@ def is_winbios(rom: bytes) -> bool:
 
 
 def find_entry(runtime: bytes) -> int:
-    """Offset in the F000 runtime where setup is entered."""
+    """Offset in the F000 runtime where setup is entered: of the calls to the setup module's
+    loader, the one after the longest run of calls. (The 12/15/93 core, s706bios: the loader
+    takes mov ax,<n>, and pushf and mov ax,1000h, the segment of the runtime's copy, come
+    between the calls; its POST calls the loader once more, after a single call.)"""
     sigs = [m.start() for m in re.finditer(b"AMIBIOSS", runtime)]
     if not sigs:
         raise ValueError("no setup module loader (AMIBIOSS) in the runtime BIOS")
+    best: tuple[int, int] | None = None
     for sig in sigs:
-        for m in re.finditer(rb"\xb0.\xbf" + re.escape(struct.pack("<H", sig)), runtime, re.S):
+        loaders = rb"(?:\xb0.|\xb8..)\xbf" + re.escape(struct.pack("<H", sig))
+        for m in re.finditer(loaders, runtime, re.S):
             loader = m.start()
             for c in re.finditer(rb"(?=\xe8(..))", runtime, re.S):
                 if (c.start() + 3 + struct.unpack("<h", c.group(1))[0]) & 0xFFFF != loader:
                     continue
-                start = c.start()
-                while start >= 3 and runtime[start - 3] == 0xE8:  # the calls before it
-                    start -= 3
-                return start
-    raise ValueError("setup entry not found in the runtime BIOS")
+                start, calls = c.start(), 0
+                while True:  # the calls before it
+                    if start >= 3 and runtime[start - 3] == 0xE8:
+                        start, calls = start - 3, calls + 1
+                    elif start >= 6 and runtime[start - 3] == 0xB8 and runtime[start - 6] == 0xE8:
+                        start -= 3  # mov ax,imm
+                    elif start >= 4 and runtime[start - 1] == 0x9C and runtime[start - 4] == 0xE8:
+                        start -= 1  # pushf
+                    else:
+                        break
+                if best is None or calls > best[0]:
+                    best = (calls, start)
+    if best is None:
+        raise ValueError("setup entry not found in the runtime BIOS")
+    return best[1]
 
 
 def _pixels(glyph: bytes) -> set:
@@ -157,7 +173,7 @@ def _in_setup(screen: Screen) -> bool:
 
 
 class WinBios:
-    def __init__(self, rom: bytes):
+    def __init__(self, rom: bytes, host_id: int = 0):
         self.kind = winbios_kind(rom)
         if not self.kind:
             raise ValueError("not an AMI WinBIOS image")
@@ -166,14 +182,21 @@ class WinBios:
         # reset through CF9h): POST again with the CMOS it left
         cmos = ami_setup.default_cmos()
         try:  # the chipset's PCI IDs may be only in the compressed modules (Tyan S1563S)
-            hints = b"".join(m.get("data") or b"" for m in ami.extract(rom)[1])
+            modules = ami.extract(rom)[1]
         except Exception:
-            hints = b""
+            modules = []
+        hints = b"".join(m.get("data") or b"" for m in modules)
+        signature = ami.cpu_signature(modules)
         for _ in range(3):
-            emu = bios_emu.BiosEmulator(rom, cmos=cmos, max_instructions=300_000_000, hints=hints)
+            emu = bios_emu.BiosEmulator(
+                rom, cmos=cmos, max_instructions=300_000_000, hints=hints, host_id=host_id
+            )
             emu.max_seconds = 240  # (the instructions decide, not how busy the machine is: a778)
+            emu.use_processor(signature)  # (Internal Cache "Reserved" for an unknown CPU)
             if self.kind == "94":
                 emu.fill_solid_font = True
+                # (5280-v101's boot block sets CMOS 78h bit 7 and resets through CF9h once)
+                emu.cf9_resets_in_place = 2
                 break
             key = SPACE_KEY if b"Hit SPACE if you want to run SETUP" in rom + hints else DEL_KEY
             emu.press_keys(key * 30, when_text="KB OK")
@@ -198,26 +221,61 @@ class WinBios:
         self.in_post = False  # setup started by POST itself (not entered from outside)
         if self.kind == "94":
             screen = emu.run(0xF000, 0xFFF0)
+            pause = None  # an error pause with the runtime and its setup loader in place
             for _ in range(3):  # an error pause ("CMOS checksum failure ... RUN SETUP
                 # UTILITY, Press F1 to RESUME", Shuttle HOT-433 07/25/94): F1 starts setup
                 if emu.stopped_reason not in ("waiting for a key", "polling the keyboard") or (
                     "F1" not in screen.text()
                 ):
                     break
+                if b"AMIBIOSS" in emu.uc.mem_read(0xF0000, 0x10000):
+                    pause = emu.snapshot()
                 emu.keys = [0x3B00]  # F1
                 screen = emu.resume()
             self.in_post = "Alt+H" in plain_text(screen)
+            if (
+                not self.in_post
+                and pause is not None
+                and (
+                    not emu.stopped_reason.startswith(
+                        ("booting", "instruction limit", "time limit")
+                    )
+                    or b"AMIBIOSS" not in emu.uc.mem_read(0xF0000, 0x10000)
+                )
+            ):
+                # (POST fails after the pause, mpe-401's EISA POST, or loops with the runtime
+                # gone, s76bios: setup from the pause; the loader switches the shadow RAM off
+                # to read the ROM's modules at F000, which a board with no chipset modelled
+                # does not do: the ROM's half put there)
+                emu.restore(pause)
+                emu.stopped_reason = "booting (setup entered at the error pause)"
+                halves = [rom[h : h + 0x10000] for h in range(0, len(rom), 0x10000)]
+                table = next((h for h in halves if h.startswith(b"AMIBIOSC")), None)
+                if table is not None and not emu.pci_devices:
+                    emu.uc.mem_write(0xF0000, table)
         if self.in_post:
             pass
         elif self.kind == "94":
             # (a POST that never ends, a778's PCI walks: the setup module is loaded from here
             # whichever limit stopped it)
             if not emu.stopped_reason.startswith(("booting", "instruction limit", "time limit")):
+                if not host_id and (0, 0) not in emu.pci_devices:
+                    # (no chipset found, its IDs packed: POST again on a 430FX, 5280-v101's
+                    # "INTEL-FX", whose POST cleared F0000 as plain RAM and ran into it)
+                    # pylint: disable-next=non-parent-init-called
+                    self.__init__(rom, HOST_430FX)  # type: ignore[misc]
+                    return
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
             runtime = bytes(emu.uc.mem_read(0xF0000, 0x10000))
             if b"AMIBIOSS" not in runtime and not emu.stopped_reason.startswith("booting"):
                 # (a loop, not the end of POST: the setup module is unpacked only at its end)
                 raise ValueError(f"POST did not finish: {emu.stopped_reason}")
+            if b"AMIBIOSS" not in runtime:
+                # (s706bios: POST boots with its boot half at F000; the half with the module
+                # table holds the runtime and its setup loader, and runs at F000 itself)
+                halves = [rom[h : h + 0x10000] for h in range(0, len(rom), 0x10000)]
+                runtime = next((h for h in halves if b"AMIBIOSS" in h), runtime)
+                emu.uc.mem_write(0xF0000, runtime)
             self.entry = find_entry(runtime)
             # the setup module loader looks for the copies of the ROM the boot block made
             # (memory tests have overwritten them since): at 2000:0 the half with the module
@@ -266,7 +324,7 @@ class WinBios:
     def screens(self, defaults: str = "setup", color: int = 0) -> list[tuple[str, Screen, str]]:
         """[(title, screen, stop reason)]: main screen, Standard Setup and the list pages
         (with their PgDn continuations), Color Set ('94)."""
-        main, _ = self.capture([])
+        main, reason = self.capture([])
         self.has_failsafe = "Fail-safe" in plain_text(main)
         prefix, focus = [], 0
         if defaults == "setup" or (defaults == "bios" and self.has_failsafe):
@@ -282,6 +340,8 @@ class WinBios:
         lines = plain_text(main).splitlines()
         if not lines:  # (Biostar MB-1433UIV: the setup screen stayed empty)
             raise ValueError("the WinBIOS setup screen is empty")
+        if not _in_setup(main):  # (hippo-dca2: a POST that ran off left an "8")
+            raise ValueError(f"the WinBIOS setup did not start (stopped: {reason})")
         help_line = lines[-1]  # "Set Date, Time, ..." on Standard
         for n in range(4):  # the Tab order differs between versions: find the Setup window
             screen, _ = self.capture(prefix + ["tab"] * n)

@@ -8,6 +8,7 @@ address of the one before it. A compressed body is a bare LH5 stream (no LHA hea
 
 from __future__ import annotations
 
+import re
 import struct
 
 import lzh
@@ -230,3 +231,53 @@ def extract(data: bytes) -> tuple[dict, list[dict]]:
                 part_info["boot_block"]["offset"] += shift
             info, modules = part_info, part_modules
     return info, modules
+
+
+# the POST's search of a processor table (AMI cores of about 1995-2001: WinBIOS 95, Simple/Hi-Flex,
+# Easy Setup): the signature POST kept from EDX at reset, stepping masked ("and al,0F0h / or
+# cl,cl / je / or al,0Fh", the "and" further up in 6vxd7-f6, later "mov ax,dx / or
+# al,0Fh"), then "mov bx,<table>" in the POST module's segment
+CPU_TABLE_SEARCH = re.compile(rb"(?:\x0a\xc9\x74\x02|\x8b\xc2)\x0c\x0f\xbb(..)\xe8", re.S)
+
+
+def cpu_signature(modules: list[dict]) -> tuple[int, bool] | None:
+    """A processor signature the BIOS's own table lists, for EDX at reset (one it does not list
+    is an unknown CPU: "(Unknown)" on the POST screen, its internal cache write-through only,
+    so the Optimal write-back shows as "Reserved"), and whether it is an AMD one where the BIOS
+    lists no Intel processor. The table: its end word, 2 bytes, then 6-byte entries of
+    signature and flags, FFFFh the unknown CPU (its flags allow write-through only). The newest
+    ordinary processor (type 0, highest family and model) is taken: the one the board was
+    mostly sold with, whose model-specific code (Pentium II L2 set-up) the POST has; entries
+    ending in Fh match any stepping. The first table is the first vendor's (Intel's; AMD's in a
+    BIOS for AMD processors only); on AMD boards with Intel's vendor string it is empty and the
+    next one (AMD's) lists the Athlons."""
+    for m in modules:
+        data = m.get("data") or b""
+        if m.get("id") != 0:
+            continue
+        empty_before = False
+        for found in CPU_TABLE_SEARCH.finditer(data):
+            table = struct.unpack("<H", found.group(1))[0]
+            entries = []
+            for at in range(table + 4, min(len(data) - 5, table + 4 + 6 * 40), 6):
+                sig, flags = struct.unpack_from("<HH", data, at)
+                if sig == 0 or sig >= 0xFF00:  # (the unknown CPU: FFFFh, later FF0Fh)
+                    break
+                entries.append((sig, flags))
+            # (OverDrives, type 1, are not taken: dkf2111 has a table of them first; nor a
+            # Pentium 4, family Fh, whose POST the emulator does not carry: the VIA and SiS
+            # Pentium 4 boards reset or halt with one)
+            ordinary = [s for s, _ in entries if not s >> 12 and s >> 8 & 15 <= 6]
+            if not ordinary:
+                empty_before = empty_before or not entries
+                continue
+            # (the usual models where the table has them: the Pentium up to the MMX, model 4,
+            # the P6 up to the Coppermine, model 8 - after them come mobile ones, Xeons and
+            # late ones: "Pentium III Xeon", "Timna"; 598lmr lists a 05Fxh); 486s as listed
+            # (411r11: the DX4 of model 9 is the one with write-back)
+            cap = {5: 4, 6: 8}
+            usual = [s for s in ordinary if s >> 4 & 15 <= cap.get(s >> 8 & 15, 15)]
+            sig = max(usual or ordinary, key=lambda s: (s >> 8 & 15, s >> 4 & 15))
+            return (sig & 0xFFF0 | 1 if sig & 0x0F == 0x0F else sig), empty_before
+        return None
+    return None

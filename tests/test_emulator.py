@@ -65,6 +65,23 @@ def test_cmos_read_and_write() -> None:
     assert memory(emu, OUT, 2) == b"\x42\x99"
 
 
+def test_a_recalibrate_after_one_reset_sense_reports_its_seek() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    fdc = lambda *values: [emu._out(emu.uc, 0x3F5, 1, v, None) for v in values]  # noqa: E731
+    results = lambda: [emu._in(emu.uc, 0x3F5, 1, None) for _ in range(2)]  # noqa: E731
+    emu._out(emu.uc, 0x3F2, 1, 0x08, None)  # the controller held in reset ...
+    emu._out(emu.uc, 0x3F2, 1, 0x0C, None)  # ... and out of it: "ready changed" per drive
+    fdc(0x08)
+    assert results() == [0xC0, 0]  # (drive 0's; POST senses no more)
+    fdc(0x07, 0x00)  # recalibrate drive 0
+    fdc(0x08)
+    assert results() == [0x20, 0]  # seek end, track 0 (not drive 1's reset result)
+    emu.fdc_no_drive = True  # (no drive on the cable: not ready)
+    fdc(0x07, 0x00)
+    fdc(0x08)
+    assert results() == [0x48, 0]
+
+
 def test_the_timer_counts_down() -> None:
     latch = b"\xb0\x00\xe6\x43"  # mov al,0 ; out 43h,al (latch channel 0)
     code = DS0 + b"\xb0\x34\xe6\x43\xb0\xff\xe6\x40\xe6\x40"  # channel 0, mode 2, count FFFFh
@@ -100,6 +117,67 @@ def test_a_timer_tick_lasts_as_many_refresh_cycles_as_on_a_real_machine(
     assert 1400 < struct.unpack("<H", memory(emu, OUT, 2))[0] < 2250
 
 
+def test_an_inferred_via_host_shows_the_rom_from_the_reset_on() -> None:
+    # only the VT82C686 named: the host (691) inferred; writes to F0000 before the BIOS sets
+    # 61h-63h do not change what reads there (626cc15's boot block checksums it)
+    code = DS0 + b"\x66\xb8\x00\x00\x00\x80\xba\xf8\x0c\x66\xef\xb2\xfc\x66\xed"  # (PCI used)
+    code += b"\xb8\x00\xf0\x8e\xd8" + b"\xc6\x06\x00\x00\x5e"  # mov byte [F000:0],5Eh
+    code += b"\xa0\x00\x00" + b"\x31\xdb\x8e\xdb" + store_al(OUT) + HALT  # read it back
+    emu = bios_emu.BiosEmulator(rom(code), hints=struct.pack("<HH", 0x1106, 0x0686))
+    assert emu.via_shadow and emu.pam_valid
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) != b"\x5e"
+
+
+def test_protect_e000_keeps_the_lower_half_of_a_128_kb_rom_from_writes() -> None:
+    # mov ax,E000h / mov ds,ax / mov byte [0],5Eh / read it back to 0:OUT (no chipset: plain RAM)
+    code = b"\xb8\x00\xe0\x8e\xd8\xc6\x06\x00\x00\x5e\x8a\x1e\x00\x00"  # (mov bl,[0])
+    code += DS0 + b"\x88\xd8" + store_al(OUT) + HALT  # mov al,bl
+    image = rom(HALT) + rom(code)
+    for protect, want in ((False, b"\x5e"), (True, b"\xff")):
+        emu = bios_emu.BiosEmulator(image)
+        emu.protect_e000 = protect
+        emu._protect()
+        emu.run(0xF000, 0xFFF0)
+        assert memory(emu, OUT, 1) == want
+
+
+def test_phoenix_cpu_table_search_takes_the_first_entry_when_none_matches() -> None:
+    # mov si,6070h / cmp si,6103h / jae +11 / cmp cs:[si+2],al / je +10 / add si,7 / jmp -17 /
+    # mov ax,45h / jmp -25 (881032j's runtime, unpacked in memory)
+    search = bytes.fromhex("be7060" "81fe0361" "730b" "2e384402" "740a" "83c607" "ebef")
+    search += bytes.fromhex("b84500" "ebe7")
+    emu = bios_emu.BiosEmulator(rom(HALT) + b"Phoenix")
+    assert emu.phoenix_rom
+    emu.uc.mem_write(0x9000, search)
+    emu._phoenix_cpu_search()
+    assert memory(emu, 0x9000 + len(search) - 5, 5) == bytes.fromhex("be70609090")
+
+
+def test_an_ami_boot_block_rom_sum_passes_in_its_copy_only() -> None:
+    # push E000h / pop ds / call +4 / or eax,eax / ret (6610's boot block, run from RAM)
+    check = bytes.fromhex("6800e01fe80400660bc0c3")
+    image = bytearray(rom(HALT))
+    image[0x8000 : 0x8000 + len(check)] = check
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.rom_sum_check
+    emu.uc.mem_write(0xE000, check)  # (the copy at 0000:E000)
+    emu._pass_rom_sum()
+    assert memory(emu, 0xE000 + 7, 3) == bytes.fromhex("6633c0")  # xor eax,eax
+    assert memory(emu, 0xF8000 + 7, 3) == bytes.fromhex("660bc0")  # the ROM as it was
+
+
+def test_port_f000h_bit_5_brings_the_lower_64_kb_to_f0000() -> None:
+    # s76bios's boot block: mov dx,0F000h / in ax,dx / or ax,20h / out dx,ax / jmp F000:FFF0
+    switch = bytes.fromhex("ba00f0ed0d2000ef") + b"\xea" + struct.pack("<HH", 0xFFF0, 0xF000)
+    lower = rom(DS0 + b"\xb0\x4c" + store_al(OUT) + HALT)  # its reset vector: "L"
+    emu = bios_emu.BiosEmulator(lower + rom(switch))
+    assert emu.a16_switch
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) == b"L"
+    assert memory(emu, 0xE0000 + CODE_AT, len(switch)) == switch  # the boot block at E000
+
+
 def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     image = bytearray(rom(HALT))
     image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VIA south bridge's ID)
@@ -123,6 +201,83 @@ def test_a_gl520sm_on_the_smbus_of_a_vt82c596() -> None:
     assert transfer(0x5B, 0x04, 2)[0] - 130 == 38  # C
     fan1, fan2 = transfer(0x5B, 0x07, 3)  # the word of the fan counts
     assert (round(480_000 / (fan1 * 2)), round(480_000 / (fan2 * 2))) == (4528, 3000)
+
+
+def test_an_ich2_lan_function_named_alone_gives_an_815_board() -> None:
+    hints = struct.pack("<HHHH", 0x8086, 0x2449, 0x8086, 0x1132)  # (Acer's 815 images)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(31, 0)][0:4]) == struct.pack("<HH", 0x8086, 0x2440)
+    assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x8086, 0x1130)
+
+
+def test_the_ich_gpio_block_reads_back_and_its_inputs_read_as_set() -> None:
+    hints = struct.pack("<HHHH", 0x8086, 0x2449, 0x8086, 0x1132)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    emu.ich_gpio_inputs = 0
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0xFF  # (no GPIO base yet: nothing there)
+    emu.pci_addr = 0x8000F858  # GPIOBASE FC00h, on with GPIO_CNTL bit 4
+    emu._pci_write(0xCFD, 1, 0xFC)
+    emu.pci_addr = 0x8000F85C
+    emu._pci_write(0xCFC, 1, 0x10)
+    emu._out(emu.uc, 0xFC03, 1, 0x08, None)  # GPIO 27: a GPIO ...
+    emu._out(emu.uc, 0xFC07, 1, 0x08, None)  # ... and an input
+    emu._out(emu.uc, 0xFC0F, 1, 0x0C, None)  # (bit 2 an output, set)
+    assert emu._in(emu.uc, 0xFC03, 1, None) == 0x08
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0x04  # GPIO 27 low (Acer's route)
+    emu.ich_gpio_inputs = 0x08000000
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0x0C  # (or high)
+    emu.ich_gpio_inputs = None
+    assert emu._in(emu.uc, 0xFC0F, 1, None) == 0xFF  # (not modelled: other boards)
+
+
+def test_an_amd_756_board_gets_the_amd_751_host() -> None:
+    # the AMD-756's power management function in a module, an Intel host in a table
+    hints = b"AMIBIOSC0627" + struct.pack("<HHHH", 0x1022, 0x740B, 0x8086, 0x122D)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(0, 0)][0:4]) == struct.pack("<HH", 0x1022, 0x7006)
+
+
+def test_a_sis_730_resets_and_ends_its_acpi_command() -> None:
+    hints = b"AMIBIOSC0627" + struct.pack("<HH", 0x1039, 0x0730)
+    emu = bios_emu.BiosEmulator(rom(HALT), hints=hints)
+    assert bytes(emu.pci_devices[(0, 0)][2:4]) == b"\x30\x07"
+    emu.pci_addr = 0x80000800 | 0x74  # device 1: ACPI base 5000h
+    emu._pci_write(0xCFC, 2, 0x5000)
+    assert emu._in(emu.uc, 0x5060, 2, None) == 0  # (a command from 62h bit 0 ended)
+    emu.pci_addr = 0x80000800 | 0x44
+    emu._pci_write(0xCFE, 1, 0x31)
+    with pytest.raises(bios_emu.Stop):
+        emu._pci_write(0xCFE, 1, 0xF1)  # bits 6-7: the reset
+    assert emu.stopped_reason == "reset"
+
+
+def test_an_alis_m7101_smbus_host_on_a_board_modelled_otherwise() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8008] = struct.pack("<HHHH", 0x10B9, 0x7101, 0x10B9, 0x1533)  # (its table)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.chip_smbus == "m7101" and (17, 0) in emu.pci_devices
+    for reg, value in ((0x14, 0x5001), (0xE0, 0x01)):  # SMBus base 5000h, host on
+        emu.pci_addr = 0x80000000 | 17 << 11 | reg & 0xFC
+        emu._pci_write(0xCFC + (reg & 3), 2 if reg == 0x14 else 1, value)
+    assert emu.smbus_base == 0x5000
+    # a byte-data read of the GL520SM's chip ID at 2Dh: address, command, protocol, start
+    for off, value in ((0, 0xFF), (3, 0x5B), (7, 0x00), (1, 0x20), (2, 0xFF)):
+        emu._out(emu.uc, 0x5000 + off, 1, value, None)
+    assert emu._in(emu.uc, 0x5000, 1, None) == 0x14  # idle, done
+    assert emu._in(emu.uc, 0x5004, 1, None) == 0x20
+
+
+def test_an_smbus_host_set_inside_the_686s_default_pm_window_answers() -> None:
+    image = bytearray(rom(HALT))
+    image[0x8000:0x8004] = struct.pack("<HH", 0x1106, 0x0686)  # (a VT82C686's ID)
+    emu = bios_emu.BiosEmulator(bytes(image))
+    assert emu.via_pm_base == 0x5000  # (where the chip leaves its PM I/O)
+    emu.pci_addr = 0x80000000 | 7 << 11 | 3 << 8 | 0x90
+    emu._pci_write(0xCFC, 2, 0x5001)  # the SMBus base, 5000h (s26r26)
+    emu._smbus_write(4, 0x5B)  # a byte-data read of the GL520SM's ID at 2Dh
+    emu._smbus_write(3, 0x00)
+    emu._smbus_write(2, 0x48)
+    assert emu._in(emu.uc, 0x5005, 1, None) == 0x20  # the host's data, not a PM register
 
 
 def test_the_pm_smbus_host_reaches_the_monitor() -> None:
@@ -165,6 +320,77 @@ def test_the_smbus_start_bit_reads_0() -> None:
     assert emu._in(emu.uc, 0x542, 1, None) == 0x08
 
 
+def test_a_word_written_to_the_clock_generator_reads_back() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+
+    def transfer(address: int, data: tuple[int, int] = (0, 0)) -> tuple[int, int]:
+        emu._smbus_write(0, 0xFF)
+        emu._smbus_write(4, address)
+        emu._smbus_write(3, 0x9F)
+        emu._smbus_write(5, data[0])
+        emu._smbus_write(6, data[1])
+        emu._smbus_write(2, 0x4C)  # word data
+        return emu.smbus[5], emu.smbus[6]
+
+    assert transfer(0xD3) == (0, 0)
+    transfer(0xD2, (0x00, 0x24))
+    assert transfer(0xD3) == (0x00, 0x24)
+
+
+def test_a_chosen_processor_signature_is_in_edx_at_reset_and_answers_cpuid_1() -> None:
+    from unicorn.x86_const import UC_X86_REG_EAX, UC_X86_REG_EDX, UC_X86_REG_ESI
+
+    # mov esi,edx ; mov eax,1 ; cpuid ; hlt
+    code = b"\x66\x89\xd6" + b"\x66\xb8\x01\x00\x00\x00" + b"\x0f\xa2" + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.reset_edx = 0x0651
+    emu.run(0xF000, 0xFFF0)
+    assert emu.uc.reg_read(UC_X86_REG_ESI) & 0xFFFFFFFF == 0x0651
+    assert emu.uc.reg_read(UC_X86_REG_EAX) & 0xFFFFFFFF == 0x0651
+    assert emu.uc.reg_read(UC_X86_REG_EDX) & 0x00800000  # (MMX: a Pentium II)
+
+
+@pytest.mark.parametrize(
+    "out, body, writes",
+    [
+        (b"\xe6\xe0", b"\xeb\x00", 1),
+        (b"\xe6\xe0", b"\x90\x90", 0x1000),
+        (b"\xba\xe0\x00\xee", b"\xeb\x00" * 4, 1),  # (mov dx,0E0h ; out dx,al: 11 bytes)
+    ],
+)
+def test_a_bare_delay_port_loop_ends_after_one_pass(
+    monkeypatch: pytest.MonkeyPatch, out: bytes, body: bytes, writes: int
+) -> None:
+    # mov cx,1000h ; out E0h,al ; jmp $+2s (or two nops: not a bare delay) ; loop ; hlt
+    seen = []
+    original = bios_emu.BiosEmulator._end_delay_loop
+
+    def counted(self: bios_emu.BiosEmulator, uc: object) -> None:
+        seen.append(1)
+        original(self, uc)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(bios_emu.BiosEmulator, "_end_delay_loop", counted)
+    back = -(len(out) - (3 if len(out) > 2 else 0) + len(body) + 2)  # (to the out)
+    code = b"\xb9\x00\x10" + out + body + b"\xe2" + struct.pack("b", back) + HALT
+    emu = bios_emu.BiosEmulator(rom(code))
+    emu.run(0xF000, 0xFFF0)
+    assert len(seen) == writes
+
+
+def test_an_smbus_block_read_into_the_32_byte_buffer_ends_with_intr() -> None:
+    emu = bios_emu.BiosEmulator(rom(HALT))
+    emu.smbus_base = 0x400
+    emu.smbus_devices[0x69] = bytearray([3, 0x11, 0x22, 0x33]) + bytearray(252)
+    emu._smbus_write(0x0D, 0x02)  # E32B
+    emu._smbus_write(4, 0xD3)  # a block read of the clock generator at 69h
+    emu._smbus_write(2, 0x54)
+    emu.smbus_busy = 0
+    assert emu._in(emu.uc, 0x400, 1, None) & 0x82 == 0x02  # INTR, no BYTE_DONE
+    assert emu._in(emu.uc, 0x405, 1, None) == 3
+    emu._in(emu.uc, 0x402, 1, None)  # (resets the buffer pointer)
+    assert [emu._in(emu.uc, 0x407, 1, None) for _ in range(3)] == [0x11, 0x22, 0x33]
+
+
 @pytest.mark.parametrize("reads, stops", [(1000, True), (50, False)])
 def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
     # mov al,3 ; out 61h,al (speaker on) ; mov cx,reads ; in al,61h ; loop (the in) ;
@@ -178,6 +404,47 @@ def test_a_post_beeping_for_ever_stops(reads: int, stops: bool) -> None:
         assert emu.beeps == bios_emu.BEEPS + 1
     else:
         assert emu.stopped_reason == "instruction limit reached" and emu.beeps == 0
+
+
+def test_register_11h_through_ech_shows_the_bios_segment_at_e0000() -> None:
+    # mov al,11h ; out ECh,al ; mov al,AAh ; out EDh,al ; then read E000:E000 (the code here)
+    code = DS0 + b"\xb0\x11\xe6\xec\xb0\xaa\xe6\xed"
+    code += b"\xb8\x00\xe0\x8e\xd8\xa0\x00\xe0"  # mov ax,E000h ; mov ds,ax ; mov al,[E000h]
+    code += b"\x31\xdb\x8e\xdb" + store_al(OUT) + HALT  # xor bx,bx ; mov ds,bx ; mov [OUT],al
+    image = b"Z" * 0x10000 + rom(code)  # (128 KB: its lower half is not the code)
+    emu = bios_emu.BiosEmulator(image)
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == code[:1]  # (F000:E000, the code's first byte, at E000:E000)
+
+
+def test_timer_channel_2_has_counted_a_little_at_a_latch_right_after_its_count() -> None:
+    # gate on ; channel 2 LSB only, mode 0 ; count FFh ; latch at once ; read
+    code = b"\xe4\x61\x0c\x01\xe6\x61\xb0\x90\xe6\x43\xb0\xff\xe6\x42\xb0\x80\xe6\x43\xe4\x42"
+    emu = bios_emu.BiosEmulator(rom(DS0 + code + store_al(OUT) + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT)[0] < 0xFF  # (Copam PC-501's timer test wants it moving)
+
+
+def test_the_tick_count_moves_for_reads_at_its_address_not_through_a_register() -> None:
+    # mov ax,[46Ch] eight times, then mov si,46Ch and mov ax,[si] eight times
+    direct = b"\xa1\x6c\x04" * 8 + b"\xa3" + struct.pack("<H", OUT)
+    indexed = b"\xbe\x6c\x04" + b"\x8b\x04" * 8 + b"\xa3" + struct.pack("<H", OUT + 2)
+    emu = bios_emu.BiosEmulator(rom(DS0 + direct + indexed + HALT))
+    emu.run(0xF000, 0xFFF0)
+    after_direct, after_indexed = struct.unpack("<HH", memory(emu, OUT, 4))
+    assert after_direct > 0 and after_indexed == after_direct  # (a memory test sees no change)
+
+
+def test_an_m6117s_registers_read_back_after_its_unlock() -> None:
+    def reg(index: int, value: int) -> bytes:  # mov al,index ; out 22h,al ; mov al,v ; out 23h,al
+        return b"\xb0" + bytes((index,)) + b"\xe6\x22\xb0" + bytes((value,)) + b"\xe6\x23"
+
+    read_15 = b"\xb0\x15\xe6\x22\xe4\x23"  # mov al,15h ; out 22h,al ; in al,23h
+    code = DS0 + reg(0x15, 0x50) + read_15 + store_al(OUT)  # (locked: nothing reads back)
+    code += reg(0x13, 0xC5) + reg(0x15, 0x50) + read_15 + store_al(OUT + 1)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 2) == b"\xff\x50"
 
 
 def test_a_reset_through_port_cf9h_stops_the_run() -> None:
@@ -267,6 +534,14 @@ def test_the_start_bit_and_a_fan_read_choose_winbond_unless_ite_came_first(
     assert memory(emu, OUT) == bytes((fan,)) and emu.hwmon_winbond is not ite_first
 
 
+def test_a_winbonds_second_temperature_in_its_bank_1() -> None:
+    # bank select 4Eh = 81h, then 50h: temperature 2, 32 C (s147r13's CPU temperature)
+    code = DS0 + hwmon_write(0x4E, 0x81) + hwmon_read(0x50, OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((32,))
+
+
 @pytest.mark.parametrize("config, winbond", [(0x00, True), (0x80, True), (0x01, None)])
 def test_the_lm78_configuration_chooses_the_winbond_layout(config: int, winbond: bool) -> None:
     # 40h = 00h (stopped) or 80h (initialise) only on an LM78/Winbond monitor (ITE's 40h is a
@@ -294,6 +569,21 @@ def test_an_ite_monitor_answers_at_the_base_of_its_logical_device_4() -> None:
     emu = bios_emu.BiosEmulator(rom(code + HALT))
     emu.run(0xF000, 0xFFF0)
     assert memory(emu, OUT, 2) == b"\xff\x64"  # then 1.6 V
+
+
+def test_a_winbond_monitor_answers_at_the_base_of_its_logical_device_0bh() -> None:
+    def sio(index: int, value: int) -> bytes:
+        return b"\xb0" + bytes((index,)) + b"\xe6\x2e\xb0" + bytes((value,)) + b"\xe6\x2f"
+
+    def read(index: int) -> bytes:  # mov dx,535h ; mov al,index ; out dx,al ; inc dx ; in al,dx
+        return b"\xba\x35\x05\xb0" + bytes((index,)) + b"\xee\x42\xec"
+
+    # logical device 0Bh at 530h (s147r13): Winbond's layout, fan 1 at 28h (4500 RPM)
+    code = DS0 + sio(0x07, 0x0B) + sio(0x60, 0x05) + sio(0x61, 0x30) + sio(0x30, 0x01)
+    code += read(0x28) + store_al(OUT)
+    emu = bios_emu.BiosEmulator(rom(code + HALT))
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT) == bytes((150,)) and emu.hwmon_winbond is True
 
 
 def test_a_vt82c686a_monitor_answers_in_the_window_post_opened() -> None:
@@ -383,6 +673,19 @@ def test_a_northwood_has_its_cache_descriptors_and_ratio() -> None:
     eax, edx, ratio = struct.unpack("<3I", memory(emu, OUT, 12))
     assert (eax, edx) == (0x665B5001, 0x007B7040)  # (7Bh: 512 KB L2)
     assert ratio >> 24 == 16 and ratio & 0x30000 == 0  # 16 x 100 MHz
+
+
+def test_amis_p4_ratio_check_takes_the_ratio_for_fixed() -> None:
+    # "test eax,100000h / jne": taken (the ratio fixed), so the store after it is skipped
+    store = b"\xc6\x06" + struct.pack("<H", OUT) + b"\x01"  # mov byte [OUT],1
+    before = b"\xc6\x06" + struct.pack("<H", OUT) + b"\x02"  # mov byte [OUT],2
+    code = DS0 + before + bios_emu.P4_RATIO_FIXED + bytes([len(store)]) + store + HALT
+    emu = bios_emu.BiosEmulator(rom(code), host_id=0x1A30)
+    emu.msr_patch_end = 0x100000
+    emu.post_codes_seen.update(range(3))
+    assert emu._patch_msr_reads()
+    emu.run(0xF000, 0xFFF0)
+    assert memory(emu, OUT, 1) == b"\x02"
 
 
 @pytest.mark.parametrize("host_id, signature", [(0, 0x0435), (0x1A30, 0xF27)])

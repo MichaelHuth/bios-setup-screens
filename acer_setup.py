@@ -26,8 +26,14 @@ from textscreen import Screen
 
 CTRL_ALT_ESC = [0x1D, 0x38, 0x01, 0x81, 0xB8, 0x9D]
 SPACE, ENTER, ESC = [0x39, 0xB9], [0x1C, 0x9C], [0x01, 0x81]
-DOWN, UP, PGDN = [0x50, 0xD0], [0x48, 0xC8], [0x51, 0xD1]
+DOWN, UP, PGDN, LEFT = [0x50, 0xD0], [0x48, 0xC8], [0x51, 0xD1], [0x4B, 0xCB]
 LOAD_DEFAULTS = "Load Setup Default Settings"
+# Acer's later "Setup Utility" (about 2000: Acer 815 boards, s58mf2s1): a framed list of entries
+# ("• System Information", ...), "Load Default Settings" asking [Yes]/[No] with [No] chosen,
+# each entry one page scrolled with PgDn, its title in the frame of row 1
+UTILITY = "Setup Utility"
+LOAD_DEFAULT = "Load Default Settings"
+ABORT = "Abort Settings Change"
 WAITING = ("waiting for a key", "polling the keyboard")
 MAX_PAGES = 8
 
@@ -77,6 +83,23 @@ def menu_entries(screen: Screen) -> list[str]:
     return out
 
 
+def utility_entries(screen: Screen) -> list[str]:
+    """The "Setup Utility" main menu's entries, top to bottom (bullets and frames dropped)."""
+    out = []
+    for line in screen.text().split("\n")[1:-1]:
+        text = re.sub(r"\s{2,}.*$", "", line.strip().lstrip("•").strip())
+        if re.match(r"[A-Za-z]", text) and "<ALT+H>" not in line:
+            out.append(text)
+    return out
+
+
+def utility_title(screen: Screen) -> str:
+    """The title in the frame of row 1 ("── System Information ──"), or ""."""
+    lines = screen.text().split("\n")
+    m = re.search(r"─ (\S.*?\S) ─", lines[1]) if len(lines) > 1 else None
+    return m.group(1) if m else ""
+
+
 HOST_430FX = 0x122D  # (any host bridge of the kind will do: the 440BX's works as well)
 
 
@@ -95,12 +118,17 @@ class AcerSetup:
             else:
                 raise
         self.emu = emu
+        self.utility = UTILITY in screen.text() and "BIOS Utility" not in screen.text()
+        if self.utility and LOAD_DEFAULT in entries:
+            n = entries.index(LOAD_DEFAULT)
+            self._keys([DOWN] * n + [ENTER, LEFT, ENTER])  # [Yes] (left of the chosen [No])
+            screen = self._keys([UP] * n)
         if LOAD_DEFAULTS in entries:  # (not on the Cx486 of A1 R2.6: two entries only)
             n = entries.index(LOAD_DEFAULTS)
             self._keys([DOWN] * n + [ENTER, ENTER])  # [Yes]
             screen = self._keys([UP] * n)  # back to the first entry
         self.emu, self.start, self.main = emu, emu.snapshot(), screen
-        self.entries = [e for e in entries if e != LOAD_DEFAULTS]
+        self.entries = [e for e in entries if e not in (LOAD_DEFAULTS, LOAD_DEFAULT, ABORT)]
 
     @staticmethod
     def _start(
@@ -115,6 +143,7 @@ class AcerSetup:
         emu.keep_rom = True  # (the ROM stays ROM when the bot gives up on its PAM)
         emu.flash_low = flash_low
         emu.kbc_input_port = 0xBB  # the password jumper open
+        emu.ich_gpio_inputs = 0  # (the 815 boards halt at POST code F2h with GPIO 27 high)
         emu.cf9_resets_in_place = 4  # (the first boot sets CMOS 8Fh and resets)
         # ALi M1541 PM2C/GCKCTL at their reset value 00h: POST reads bit 1 of EBh into the
         # flag that lets the setup module start (V35ND1S1)
@@ -128,9 +157,17 @@ class AcerSetup:
         if "Ctrl_Alt_Esc" in screen.text():  # (V65: Alt lost while it set the keyboard's LEDs)
             emu.press_keys(CTRL_ALT_ESC, paced=True)
             screen = emu.resume()
-        if "Press any key to continue" in screen.text():  # the errors POST configured
+        utility = UTILITY in screen.text() and "BIOS Utility" not in screen.text()
+        if "Press any key to continue" in screen.text() or (
+            utility and "automatically configured" in screen.text()
+        ):  # the errors POST configured (V65's "BIOS Utility" has "Exit Setup Utility")
             emu.press_keys(SPACE, paced=True)
             screen = emu.resume()
+        if "BIOS Utility" not in screen.text() and UTILITY in screen.text():
+            entries = utility_entries(screen)
+            if not entries:
+                raise ValueError(f"the Acer setup did not start (stopped: {emu.stopped_reason})")
+            return emu, screen, entries
         entries = menu_entries(screen)
         if "BIOS Utility" not in screen.text() or not entries:
             raise ValueError(f"the Acer setup did not start (stopped: {emu.stopped_reason})")
@@ -150,9 +187,26 @@ class AcerSetup:
         screen = self._keys(path + [PGDN] * pages)
         return screen, self.emu.stopped_reason
 
+    def walk_utility(self, path: list[list[int]]) -> list[tuple[str, Screen, str]]:
+        """A "Setup Utility" entry's page, scrolled with PgDn until it no longer moves."""
+        out: list[tuple[str, Screen, str]] = []
+        before = ""
+        for page in range(MAX_PAGES):
+            screen, reason = self.capture(path, page)
+            title = utility_title(screen)
+            if not title or screen.text() == before:
+                break
+            before = screen.text()
+            out.append((title, screen, reason))
+        if len(out) > 1:
+            out = [(f"{t} ({i})", s, r) for i, (t, s, r) in enumerate(out, start=1)]
+        return out
+
     def walk(self, path: list[list[int]]) -> list[tuple[str, Screen, str]]:
         """The pages behind an entry; a menu (Cx486 of A1 R2.6: "System Configuration", whose
         help line says "= Select") with the pages behind each of its entries."""
+        if self.utility:
+            return self.walk_utility(path)
         out: list[tuple[str, Screen, str]] = []
         for page in range(MAX_PAGES):
             screen, reason = self.capture(path, page)

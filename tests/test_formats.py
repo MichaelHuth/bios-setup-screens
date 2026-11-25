@@ -10,6 +10,7 @@ import struct
 
 import pytest
 
+import acer_setup
 import ami
 import award6_setup
 import award_cf_bug
@@ -19,7 +20,12 @@ import bios_summary
 import hfjump_setup
 import phoenix
 import phoenix_tc_setup as tc
+import pulldown_setup
+import screen_tools
+import sqx
 import uefi_setup
+import winbios_setup
+from textscreen import Screen
 from builders import (
     AmiModule,
     FfvFile,
@@ -76,6 +82,28 @@ def test_ami_cim_x_modules_are_stored_whatever_their_flag() -> None:
     image[at + 7] = 0  # (the flag says compressed)
     modules = ami.extract(bytes(image))[1]
     assert modules[0]["data"] == b"CIM-X" * 50 and not modules[0]["compressed"]
+
+
+def test_ami_cpu_signature_is_one_the_post_modules_table_lists() -> None:
+    def post(*tables: list[tuple[int, int]]) -> dict:
+        data = bytearray(0x100)
+        for k, entries in enumerate(tables):
+            at = 0x80 + 0x40 * k
+            search = b"\x24\xf0\x0a\xc9\x74\x02\x0c\x0f\xbb" + struct.pack("<H", at) + b"\xe8\0\0"
+            data[0x10 + 0x10 * k : 0x10 + 0x10 * k + len(search)] = search
+            table = b"".join(struct.pack("<HHH", s, f, 0) for s, f in entries + [(0xFFFF, 0x121)])
+            data[at : at + 4] = struct.pack("<HH", at + 4 + len(table) - 6, 0x0A00)
+            data[at + 4 : at + 4 + len(table)] = table
+        return {"id": 0, "data": bytes(data)}
+
+    # the newest ordinary processor (an OverDrive, 1xxxh, not); any stepping (Fh)
+    table = [(0x051F, 0x15C2), (0x153F, 0x15D3), (0x054F, 0x15D3), (0x053F, 0x15D3)]
+    assert ami.cpu_signature([post(table)]) == (0x0541, False)
+    assert ami.cpu_signature([post([(0x0430, 0x0329)])]) == (0x0430, False)
+    assert ami.cpu_signature([post([])]) is None  # (the unknown CPU only)
+    # Intel's table empty, AMD's lists Athlons
+    assert ami.cpu_signature([post([], [(0x060F, 0x15D2), (0x064F, 0x15D2)])]) == (0x0641, True)
+    assert ami.cpu_signature([{"id": 1, "data": post([(0x051F, 0x15CB)])["data"]}]) is None
 
 
 def test_ami_broken_pointer_is_an_error_not_a_crash() -> None:
@@ -451,3 +479,117 @@ def test_the_bios_summary_reports_the_award_cf_bug() -> None:
     image[0x2000 : 0x2000 + len(CF_MASK)] = CF_MASK
     bugs = bios_summary.summarize(bytes(image))["known_bugs"]
     assert bugs[0]["verdict"].startswith("affected")
+
+
+def test_pulldown_setup_reads_its_bar_and_list_and_where_post_starts() -> None:
+    lines = [
+        " ┌" + "─" * 76 + "┐",
+        " │    General    Peripherals    PnP/PCI    Hard Disk    Misc.     Exit        │",
+        " └─╔══════════════════════════════╗" + "─" * 43 + "┘",
+        "░░░║                              ║",
+        "░░░║  Load Default CMOS Setting   ║",
+        "░░░║  Set Date                 ►  ║",
+        "░░░║  [√] Internal Cache          ║",
+        "░░░╚══════════════════════════════╝",
+    ]
+    screen = Screen()
+    for row, line in enumerate(lines):
+        for col, ch in enumerate(line):
+            screen.put(col, row, 0x10 if ch == "►" else ch.encode("cp437")[0], 0x07)
+    assert pulldown_setup.menu_bar(screen) == [
+        "General",
+        "Peripherals",
+        "PnP/PCI",
+        "Hard Disk",
+        "Misc.",
+        "Exit",
+    ]
+    entries = pulldown_setup.pulldown_entries(screen)
+    assert entries == [
+        "Load Default CMOS Setting",
+        "Set Date                 ►",
+        "[√] Internal Cache",
+    ]
+    # a reset vector's near jump into zeros (a damaged dump): POST from F000:E05B
+    rom = bytearray(0x10000)
+    rom[0xFFF0:0xFFF3] = b"\xe9\x00\xc0"
+    assert pulldown_setup._entry(bytes(rom)) == 0xE05B
+    rom[0xBFF3] = 0xFA
+    assert pulldown_setup._entry(bytes(rom)) == 0xFFF0
+
+
+def test_acers_setup_utility_menu_and_page_titles() -> None:
+    menu = Screen()
+    rows = {
+        0: "Setup Utility",
+        8: "    \x07 System Information     \xe2",
+        9: "    \x07 Disk Drives            \xe2",
+        16: "      Load Default Settings  \xe2",
+        17: "      Abort Settings Change  \xe2",
+        24: "     <ALT+H>  Key Help",
+    }
+    for row, text in rows.items():
+        for col, ch in enumerate(text.encode("latin-1")):
+            menu.put(col + 20, row, ch, 0x1F)
+    assert acer_setup.utility_entries(menu) == [
+        "System Information",
+        "Disk Drives",
+        "Load Default Settings",
+        "Abort Settings Change",
+    ]
+    page = Screen()
+    for col, ch in enumerate(b"\xc4" * 28 + b" System Information " + b"\xc4" * 28):
+        page.put(col + 1, 1, ch, 0x1F)
+    assert acer_setup.utility_title(page) == "System Information"
+
+
+def test_sqx_distance_tables_have_a_bit_count_per_code() -> None:
+    # 48/50/52 codes with a base each and one past the end; the 8 MB table 54 without it
+    for mb, codes in ((1, 48), (2, 50), (4, 52), (8, 54)):
+        bases, extra = sqx.BASE[mb]
+        assert len(extra) == codes
+        assert len(bases) == codes + (mb != 8)
+
+
+def test_a_micro_channel_ps2_bios_is_named_as_one_without_setup() -> None:
+    raw = bytearray(b"\xff" * 0x20000)
+    raw[0x100:0x110] = b"IBM 1981, 1987 "
+    raw[-16:] = bytes.fromhex("ea5be000f030342f31312f383800f834")  # model byte F8h
+    assert "Reference Diskette" in screen_tools._unsupported_family(bytes(raw))
+    raw[0x200:0x205] = b"SETUP"  # (a setup in the ROM: not this case)
+    assert "Reference Diskette" not in screen_tools._unsupported_family(bytes(raw))
+
+
+def test_a_dell_image_short_of_its_boot_block_is_named_as_one() -> None:
+    raw = bytearray(0x70000)  # 448 KB of a 512 KB chip
+    raw[0x1000:0x100B] = b"Dell System"
+    assert "without its boot block (448 KB" in screen_tools._unsupported_family(bytes(raw))
+    raw += bytes(0x10000)  # (the whole chip: not this case)
+    assert "boot block" not in screen_tools._unsupported_family(bytes(raw))
+
+
+def test_winbios_entry_is_the_longest_run_of_calls_before_the_setup_loader() -> None:
+    runtime = bytearray(0x10000)
+    sig, loader = 0xC016, 0xBFE4
+    runtime[sig : sig + 8] = b"AMIBIOSS"
+    runtime[loader : loader + 6] = b"\xb8\x02\x00\xbf" + struct.pack("<H", sig)  # mov ax,2
+
+    def call(at: int, to: int) -> bytes:
+        return b"\xe8" + struct.pack("<H", (to - at - 3) & 0xFFFF)
+
+    runtime[0xA6C1:0xA6C5] = b"\x90\x90\x1f\x07"  # POST: one call, then the loader
+    runtime[0xA6C5:0xA6C8] = call(0xA6C5, 0xC084)
+    runtime[0xA6C8:0xA6CB] = call(0xA6C8, loader)
+    setup = bytearray(b"\xe9\x00\x00")  # (a jmp before the run)
+    for code in (
+        call(0xBF58, 0xA62B),
+        b"\x9c",  # pushf
+        call(0xBF5C, 0xC08A),
+        b"\xb8\x00\x10",  # mov ax,1000h
+        call(0xBF62, 0xC093),
+        call(0xBF65, 0xC084),
+        call(0xBF68, loader),
+    ):
+        setup += code
+    runtime[0xBF55 : 0xBF55 + len(setup)] = setup
+    assert winbios_setup.find_entry(bytes(runtime)) == 0xBF58
