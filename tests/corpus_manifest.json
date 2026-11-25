@@ -3770,10 +3770,10 @@
   "text": "51d7f977f63b1c40"
  },
  "205d40ecb3a59de97cc63b377dd6e12433022f3252cf3bf8bfe1aa3964ac1c78": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vtx-f7e-6239f0909fc43259972497.zip",
-  "screens": 8,
-  "text": "70aae15593112d4b"
+  "screens": 9,
+  "text": "10f5d067a971db40"
  },
  "206dd8f4ca65f53fcef456f598cb2d55207650991731cf581947df175cabe248": {
   "bios": "AMI WinBIOS (94 generation), captured by running the whole R",
@@ -7722,10 +7722,9 @@
   "text": "3453c037bb3b60e4"
  },
  "403df10563702321607b376ebfda1efcd107c117a142df40e6a03bf132a5c2a8": {
-  "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
+  "error": "exit code 3221225477",
   "name": "vp3c0c21-63614ba7ab405197703735.exe.bin",
-  "screens": 6,
-  "text": "4002e822a7beec59"
+  "result": "crash"
  },
  "4041668b20dc48155c5b01935e79d46bd593a3882231adfe46e6a3f838c839b1": {
   "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
@@ -11802,10 +11801,10 @@
   "text": "186c5cf3f2d41114"
  },
  "62a1e13fdc3f4d148d9c30cb35731b4e2ebdd8681a19f8e1fe99c730a7992eec": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "6vx7-4xa-f4c-623a0cdadb50f416909374.zip",
-  "screens": 8,
-  "text": "ab15c5ef726d1082"
+  "screens": 9,
+  "text": "fb9772058e4bc130"
  },
  "62a578f5ba942418d69b8864504e895d2224b2405f650d511c11000c18676c43": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -13134,10 +13133,9 @@
   "text": "4d392a8011aee424"
  },
  "6e0a5e3b444abcd787d7fb84cd5f9d861628b7bec50721305a4d5e2e28077fee": {
-  "bios": "Award 6.00PG: frames and help texts from the awardext module",
+  "error": "exit code 3221225477",
   "name": "bn400lb8-64202c7b73cd1280014083.zip",
-  "screens": 10,
-  "text": "b6f907a119f34cb4"
+  "result": "crash"
  },
  "6e0f50d976636f8590fd64d3317a66f32b9b253ede6c579df9a0aafbcf0889b6": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -14218,10 +14216,9 @@
   "text": "7cdfbe23084d5528"
  },
  "76d8b7e07ab1643b710e9d619bb58c8bf5a69afe084b5312a0e7d52f0f62f948": {
-  "bios": "Award 4.5x setup code in LHA module 'original.tmp'",
+  "error": "exit code 3221225477",
   "name": "990309j4-68335b744c2ff518881626.zip",
-  "screens": 7,
-  "text": "ac7845dd0ee7d6f0"
+  "result": "crash"
  },
  "76dbd60bb2613263ba3edaa3b0d4a6258e45e3c60cb53864d0d6b36a8bc5166f": {
   "bios": "Award 6.00PG: frames and help texts from the awardext module",
@@ -14422,10 +14419,10 @@
   "text": "8d33fd70cbdc7210"
  },
  "7827e86d8ab02a02db037307b6145af25f19bce90249dbf41a2c36bdefbc2342": {
-  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, started dir",
+  "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "motherboard-bios-6vtxe-f9-63ac3d2cae2d7776401350.exe.bin",
-  "screens": 8,
-  "text": "7a46d12b06e1f41d"
+  "screens": 9,
+  "text": "7f1e498601a4b2d9"
  },
  "7845ff236de48e973d89ffdfb4c94cd17616e3bca5e4c051cc77b5fcdf743867": {
   "bios": "classic AMIBIOS setup, captured by running the ROM's setup c",
@@ -14651,7 +14648,7 @@
   "bios": "AMIBIOS with the Simple/Hi-Flex text-mode setup, captured by",
   "name": "tx0212g-5f874ad3ad982586698007.rom",
   "screens": 9,
-  "text": "ea14dfd72743fa74"
+  "text": "430e86bd57271844"
  },
  "79cad086f47b1331600366e7fb1d846069218ab8f4f7fd7c3e775c47cfb3f5ed": {
   "bios": "Award 4.5x setup code in file",
@@ -26750,10 +26747,9 @@
   "text": "78ae4ac8728c87f2"
  },
  "dc72d04665433b9515283218870c731005df6c2b7dbd70533a70984f030417fb": {
-  "bios": "Award 6.00PG: frames and help texts from the awardext module",
+  "error": "exit code 3221225477",
   "name": "mke0629f-63861406ea1b1560752679.zip",
-  "screens": 10,
-  "text": "95cb4b01bfca35e2"
+  "result": "crash"
  },
  "dc88e0e20cf4624f84ded01864a34c458d421a875cca77c2175b0af2ff809005": {
   "bios": "AMIBIOS 8, setup pages read from the ROM without running it ",
